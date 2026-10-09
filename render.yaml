@@ -1,3 +1,30 @@
-git remote add origin https://github.com/Cdeverea47/IronGate-Housing.git
-git branch -M main
-git push -u origin main
+services:
+  - type: web
+    name: irongate-housing
+    runtime: node
+    plan: free
+    buildCommand: cd frontend && npm install && npm run build && cd ../backend && npm install
+    startCommand: cd backend && npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 22.11.0
+      - key: PORT
+        value: 10000
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATA_DIR
+        value: /var/data
+      - key: PUBLIC_APP_URL
+        value: https://irongate-housing.onrender.com
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+    disk:
+      name: irongate-data
+      mountPath: /var/data
+      sizeGB: 1
