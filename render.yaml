@@ -12,8 +12,6 @@ services:
         value: 10000
       - key: JWT_SECRET
         generateValue: true
-      - key: DATA_DIR
-        value: /var/data
       - key: PUBLIC_APP_URL
         value: https://irongate-housing.onrender.com
       - key: STRIPE_SECRET_KEY
@@ -24,7 +22,3 @@ services:
         sync: false
       - key: EMAIL_FROM
         sync: false
-    disk:
-      name: irongate-data
-      mountPath: /var/data
-      sizeGB: 1
