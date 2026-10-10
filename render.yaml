@@ -22,3 +22,6 @@ services:
         sync: false
       - key: EMAIL_FROM
         sync: false
+        git add render.yaml
+git commit -m "Fix render.yaml for free plan"
+git push
