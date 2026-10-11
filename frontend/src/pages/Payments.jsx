@@ -1,0 +1,303 @@
+import React, { useEffect, useState } from 'react';
+import { api } from '../api.js';
+import { Card, Button, Modal, Input, Label, Select, Badge, ErrorText, EmptyState } from '../components/UI.jsx';
+
+const emptyForm = { lease_id: '', amount: '', due_date: '', paid_date: '', method: 'bank_transfer', status: 'pending', notes: '' };
+
+const methodLabels = {
+  cash: 'Cash',
+  check: 'Check',
+  zelle: 'Zelle',
+  bank_transfer: 'Bank transfer',
+  card: 'Card',
+  other: 'Other',
+};
+
+function statusTone(status, dueDate) {
+  if (status === 'paid') return 'green';
+  if (status === 'pending' && dueDate < new Date().toISOString().slice(0, 10)) return 'red';
+  return 'amber';
+}
+
+export default function Payments() {
+  const [payments, setPayments] = useState([]);
+  const [leases, setLeases] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [form, setForm] = useState(emptyForm);
+  const [error, setError] = useState(null);
+  const [linkModal, setLinkModal] = useState({ open: false, url: '', copied: false });
+  const [linkError, setLinkError] = useState(null);
+  const [linkLoadingId, setLinkLoadingId] = useState(null);
+  const [markPaidModal, setMarkPaidModal] = useState({ open: false, payment: null, method: 'cash' });
+  const [zelleContact, setZelleContact] = useState('');
+  const [zelleSaving, setZelleSaving] = useState(false);
+  const [zelleSaved, setZelleSaved] = useState(false);
+
+  function load() {
+    setLoading(true);
+    Promise.all([api.get('/payments'), api.get('/leases'), api.get('/auth/me')])
+      .then(([p, l, me]) => {
+        setPayments(p);
+        setLeases(l);
+        setZelleContact(me.zelle_contact || '');
+      })
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(load, []);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError(null);
+    try {
+      await api.post('/payments', form);
+      setModalOpen(false);
+      setForm(emptyForm);
+      load();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function confirmMarkPaid(e) {
+    e.preventDefault();
+    const { payment, method } = markPaidModal;
+    await api.put(`/payments/${payment.id}`, {
+      status: 'paid',
+      paid_date: new Date().toISOString().slice(0, 10),
+      method,
+    });
+    setMarkPaidModal({ open: false, payment: null, method: 'cash' });
+    load();
+  }
+
+  async function saveZelleContact(e) {
+    e.preventDefault();
+    setZelleSaving(true);
+    setZelleSaved(false);
+    try {
+      await api.patch('/auth/me', { zelle_contact: zelleContact });
+      setZelleSaved(true);
+      setTimeout(() => setZelleSaved(false), 2000);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setZelleSaving(false);
+    }
+  }
+
+  async function requestPaymentLink(payment) {
+    setLinkError(null);
+    setLinkLoadingId(payment.id);
+    try {
+      const { url } = await api.post(`/payments/${payment.id}/checkout`);
+      setLinkModal({ open: true, url, copied: false });
+    } catch (err) {
+      setLinkError(err.message);
+      setLinkModal({ open: true, url: '', copied: false });
+    } finally {
+      setLinkLoadingId(null);
+    }
+  }
+
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(linkModal.url);
+      setLinkModal((m) => ({ ...m, copied: true }));
+    } catch {
+      // Clipboard API can fail without HTTPS/permissions — the link is still selectable text.
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-white">Payments</h1>
+          <p className="text-white/60 text-sm mt-1">Rent due and rent received</p>
+        </div>
+        <Button onClick={() => setModalOpen(true)} disabled={leases.length === 0}>+ Add payment</Button>
+      </div>
+
+      <Card className="p-4">
+        <form onSubmit={saveZelleContact} className="flex flex-wrap items-end gap-3">
+          <div className="flex-1 min-w-[220px]">
+            <Label>Your Zelle email or phone (optional)</Label>
+            <Input
+              value={zelleContact}
+              onChange={(e) => setZelleContact(e.target.value)}
+              placeholder="you@example.com or (555) 123-4567"
+            />
+          </div>
+          <Button type="submit" variant="secondary" disabled={zelleSaving}>
+            {zelleSaved ? 'Saved ✓' : zelleSaving ? 'Saving…' : 'Save'}
+          </Button>
+        </form>
+        <p className="text-xs text-white/50 mt-2">
+          Shown to you as a reminder of what to give tenants who want to pay rent via Zelle — banks don't allow
+          apps like this one to send or request Zelle payments directly.
+        </p>
+      </Card>
+
+      {leases.length === 0 ? <p className="text-sm text-amber-200">Create a lease before recording payments.</p> : null}
+
+      {loading ? (
+        <p className="text-white/60">Loading…</p>
+      ) : payments.length === 0 ? (
+        <EmptyState message="No payments recorded yet." />
+      ) : (
+        <Card className="divide-y divide-white/10">
+          {payments.map((p) => (
+            <div key={p.id} className="p-4 flex items-center justify-between">
+              <div>
+                <div className="font-medium text-white">
+                  {p.first_name} {p.last_name} · {p.property_name} Unit {p.unit_number}
+                </div>
+                <div className="text-sm text-white/60">
+                  ${p.amount} due {p.due_date}
+                  {p.paid_date ? ` · paid ${p.paid_date}${p.method ? ` via ${methodLabels[p.method] || p.method}` : ''}` : ''}
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <Badge tone={statusTone(p.status, p.due_date)}>{p.status}</Badge>
+                {p.status !== 'paid' && (
+                  <>
+                    <Button
+                      variant="secondary"
+                      onClick={() => requestPaymentLink(p)}
+                      disabled={linkLoadingId === p.id}
+                    >
+                      {linkLoadingId === p.id ? 'Creating link…' : 'Send payment link'}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      onClick={() => setMarkPaidModal({ open: true, payment: p, method: 'cash' })}
+                    >
+                      Mark paid manually
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+        </Card>
+      )}
+
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Add payment">
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <Label>Lease</Label>
+            <Select value={form.lease_id} onChange={(e) => setForm({ ...form, lease_id: e.target.value })} required>
+              <option value="">Select a lease</option>
+              {leases.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.first_name} {l.last_name} · {l.property_name} Unit {l.unit_number}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Amount ($)</Label>
+              <Input type="number" step="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} required />
+            </div>
+            <div>
+              <Label>Due date</Label>
+              <Input type="date" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} required />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Status</Label>
+              <Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+                <option value="pending">Pending</option>
+                <option value="paid">Paid</option>
+                <option value="late">Late</option>
+              </Select>
+            </div>
+            <div>
+              <Label>Method</Label>
+              <Select value={form.method} onChange={(e) => setForm({ ...form, method: e.target.value })}>
+                {Object.entries(methodLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+          <ErrorText>{error}</ErrorText>
+          <Button type="submit" className="w-full">Save payment</Button>
+        </form>
+      </Modal>
+
+      <Modal
+        open={markPaidModal.open}
+        onClose={() => setMarkPaidModal({ open: false, payment: null, method: 'cash' })}
+        title="Mark payment paid"
+      >
+        <form onSubmit={confirmMarkPaid} className="space-y-3">
+          <p className="text-sm text-white/70">
+            Marking {markPaidModal.payment ? `$${markPaidModal.payment.amount}` : 'this payment'} as paid today. How
+            was it paid?
+          </p>
+          <div>
+            <Label>Method</Label>
+            <Select
+              value={markPaidModal.method}
+              onChange={(e) => setMarkPaidModal((m) => ({ ...m, method: e.target.value }))}
+            >
+              {Object.entries(methodLabels).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <Button type="submit" className="w-full">
+            Confirm paid
+          </Button>
+        </form>
+      </Modal>
+
+      <Modal
+        open={linkModal.open}
+        onClose={() => setLinkModal({ open: false, url: '', copied: false })}
+        title="Secure payment link"
+      >
+        {linkError ? (
+          <ErrorText>{linkError}</ErrorText>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-sm text-white/70">
+              Send this link to your tenant. It opens a secure, Stripe-hosted payment page — card details never
+              pass through this app.
+            </p>
+            <div className="rounded-lg border border-white/20 bg-white/10 px-3.5 py-2.5 text-sm text-white break-all">
+              {linkModal.url}
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={copyLink} className="flex-1">
+                {linkModal.copied ? 'Copied ✓' : 'Copy link'}
+              </Button>
+              <Button variant="secondary" onClick={() => window.open(linkModal.url, '_blank')}>
+                Open
+              </Button>
+            </div>
+            <p className="text-xs text-white/50">
+              The payment updates to "paid" automatically once your tenant completes checkout.
+            </p>
+            {zelleContact ? (
+              <p className="text-xs text-white/50 pt-2 border-t border-white/10">
+                Prefer Zelle? Tell your tenant to send rent to <span className="text-white/80">{zelleContact}</span>{' '}
+                and mark it paid manually here once received.
+              </p>
+            ) : null}
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}

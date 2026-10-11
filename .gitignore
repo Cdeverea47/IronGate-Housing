@@ -1,0 +1,16 @@
+node_modules/
+.env
+*.log
+.DS_Store
+
+backend/data.db
+backend/data.db-*
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+frontend/dist/
+.env.*
+!.env.example
+
+dev.db
+dev.db-journal

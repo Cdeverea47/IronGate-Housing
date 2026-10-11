@@ -1,0 +1,35 @@
+# Render "Blueprint" — deploys this whole app as a single web service.
+# The backend serves the built frontend itself (see server.js), so there's
+# only one service, one URL, and no CORS to configure.
+#
+# To use: push this repo to GitHub, then in the Render dashboard choose
+# "New +" -> "Blueprint" and point it at the repo. Render reads this file
+# and sets everything up automatically.
+services:
+  - type: web
+    name: irongate-housing
+    runtime: node
+    plan: free
+    buildCommand: cd frontend && npm install && npm run build && cd ../backend && npm install
+    startCommand: cd backend && npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 22.11.0
+      - key: PORT
+        value: 10000
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PUBLIC_APP_URL
+        value: https://irongate-housing.onrender.com
+      # Optional — the app runs fine without these (payments show a friendly
+      # "ask your landlord to use Zelle instead" message, and emails are
+      # just skipped/logged). Set them in the Render dashboard if/when you
+      # want live Stripe payments or Resend emails for the demo.
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
