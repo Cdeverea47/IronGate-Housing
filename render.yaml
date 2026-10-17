@@ -33,3 +33,7 @@ services:
         sync: false
       - key: EMAIL_FROM
         sync: false
+   cd C:\Users\dever\Downloads\landlord-tenant-app
+   git add -A
+   git commit -m "Latest updates"
+   git push
