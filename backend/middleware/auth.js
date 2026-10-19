@@ -8,6 +8,10 @@ function requireAuth(req, res, next) {
   if (!token) return res.status(401).json({ error: 'Missing authorization token' });
   try {
     const payload = jwt.verify(token, JWT_SECRET);
+    // The account may no longer exist (e.g. the database was reset on a
+    // redeploy) — treat that like an expired login instead of crashing later.
+    const exists = require('../db').prepare('SELECT 1 FROM users WHERE id = ?').get(payload.id);
+    if (!exists) return res.status(401).json({ error: 'Your session expired. Please log in again.' });
     req.user = payload;
     next();
   } catch (err) {

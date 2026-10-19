@@ -21,6 +21,14 @@ async function request(path, { method = 'GET', body, isForm = false } = {}) {
   const contentType = res.headers.get('content-type') || '';
   const data = contentType.includes('application/json') ? await res.json() : await res.text();
 
+  // Stale login (expired token, or the account no longer exists after a server
+  // reset): clear it and send the user to the login page.
+  if (res.status === 401 && token && !path.startsWith('/auth/login') && !path.startsWith('/auth/register')) {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    if (!window.location.pathname.startsWith('/login')) window.location.href = '/login';
+  }
+
   if (!res.ok) {
     const message = (data && data.error) || 'Request failed';
     throw new Error(message);
