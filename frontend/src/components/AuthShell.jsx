@@ -1,18 +1,15 @@
 import React from 'react';
-import { LogoBadge, LogoMark, Wordmark } from './Logo.jsx';
+import { LogoBadge, Wordmark } from './Logo.jsx';
 
 // Shared look for the login / sign-up screens: the app's blue gradient with a
-// large, faint IronGate logo in the background and the form in a centered card.
+// single centered IronGate logo above the form card.
 export function AuthShell({ children, wide = false }) {
   return (
     <div className="relative min-h-screen overflow-hidden bg-brand-gradient-diagonal text-white flex flex-col items-center justify-center px-4 py-10">
-      {/* Background logo */}
-      <LogoMark className="pointer-events-none absolute -right-24 -bottom-24 h-[560px] w-[560px] text-white opacity-10" />
-      <LogoMark className="pointer-events-none absolute -left-32 -top-32 h-[420px] w-[420px] text-white opacity-[0.07]" />
-
-      <div className="relative z-10 flex items-center gap-2.5 mb-6">
-        <LogoBadge size={40} />
-        <span className="text-xl font-semibold tracking-tight">
+      {/* The one logo, centered above the card */}
+      <div className="flex flex-col items-center gap-3 mb-8">
+        <LogoBadge size={88} />
+        <span className="text-2xl font-semibold tracking-tight">
           <Wordmark />
         </span>
       </div>
