@@ -2,7 +2,7 @@ import React from 'react';
 import { LogoBadge, LogoMark, Wordmark } from './Logo.jsx';
 
 // Shared look for the login / sign-up screens: the app's blue gradient with a
-// six big faint IronGate logos scattered around and one bold logo above the
+// nine big faint IronGate logos scattered around and one bold logo above the
 // form card.
 // Fixed, scattered positions (percent of the screen) so the layout is stable.
 const BIG_LOGOS = [
@@ -12,12 +12,15 @@ const BIG_LOGOS = [
   { top: '58%', left: '80%', size: 340, rotate: -20, opacity: 0.14 },
   { top: '80%', left: '28%', size: 240, rotate: 15, opacity: 0.12 },
   { top: '86%', left: '-4%', size: 200, rotate: -8, opacity: 0.12 },
+  { top: '-7%', left: '42%', size: 210, rotate: -6, opacity: 0.12 },
+  { top: '84%', left: '66%', size: 260, rotate: 12, opacity: 0.12 },
+  { top: '26%', left: '14%', size: 150, rotate: -18, opacity: 0.1 },
 ];
 
 export function AuthShell({ children, wide = false }) {
   return (
     <div className="relative min-h-screen overflow-hidden bg-brand-gradient-diagonal text-white flex flex-col items-center justify-center px-4 py-10">
-      {/* Six big logos scattered around the edges */}
+      {/* Nine big logos scattered around the edges */}
       {BIG_LOGOS.map((l, i) => (
         <LogoMark
           key={i}
