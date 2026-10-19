@@ -21,10 +21,6 @@ export default function TenantDocuments() {
   const [error, setError] = useState(null);
   const fileRef = useRef(null);
 
-  const [insuranceUploading, setInsuranceUploading] = useState(false);
-  const [insuranceError, setInsuranceError] = useState(null);
-  const insuranceFileRef = useRef(null);
-
   function load() {
     setLoading(true);
     api
@@ -35,31 +31,8 @@ export default function TenantDocuments() {
 
   useEffect(load, []);
 
-  const rentersInsuranceDocs = documents.filter((d) => d.category === 'renters_insurance');
+  // Renter's insurance now lives on its own page (Payments → Rental insurance).
   const otherDocs = documents.filter((d) => d.category !== 'renters_insurance');
-
-  async function handleInsuranceUpload(e) {
-    e.preventDefault();
-    setInsuranceError(null);
-    const file = insuranceFileRef.current.files[0];
-    if (!file) {
-      setInsuranceError('Choose a file to upload');
-      return;
-    }
-    const fd = new FormData();
-    fd.append('file', file);
-    fd.append('category', 'renters_insurance');
-    setInsuranceUploading(true);
-    try {
-      await api.post('/portal/documents', fd, { isForm: true });
-      insuranceFileRef.current.value = '';
-      load();
-    } catch (err) {
-      setInsuranceError(err.message);
-    } finally {
-      setInsuranceUploading(false);
-    }
-  }
 
   async function handleUpload(e) {
     e.preventDefault();
@@ -97,51 +70,6 @@ export default function TenantDocuments() {
         </div>
         <Button onClick={() => setModalOpen(true)}>+ Upload document</Button>
       </div>
-
-      <Card className="p-5">
-        <h2 className="text-sm font-medium text-white/80 mb-1">Renter's insurance</h2>
-        <p className="text-xs text-white/50 mb-4">
-          Upload proof of your renter's insurance policy so your landlord has it on file.
-        </p>
-
-        {rentersInsuranceDocs.length > 0 ? (
-          <div className="space-y-2 mb-4">
-            {rentersInsuranceDocs.map((d) => (
-              <div key={d.id} className="flex items-center justify-between rounded-lg bg-white/5 px-3.5 py-2.5">
-                <div className="text-sm text-white/90 truncate">
-                  {d.original_name}
-                  <span className="text-white/50"> · {new Date(d.uploaded_at).toLocaleDateString()}</span>
-                </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  <a href={api.portalDownloadUrl(d.id)} className="text-white/90 hover:text-white text-sm font-medium underline">
-                    Download
-                  </a>
-                  {d.uploaded_by_role === 'tenant' ? (
-                    <button
-                      onClick={() => handleDelete(d)}
-                      className="text-rose-200 hover:text-rose-100 text-sm font-medium"
-                    >
-                      Delete
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : null}
-
-        <form onSubmit={handleInsuranceUpload} className="flex flex-wrap items-center gap-3">
-          <input
-            ref={insuranceFileRef}
-            type="file"
-            className="flex-1 min-w-[200px] text-sm text-white/70 file:mr-3 file:rounded-lg file:border-0 file:bg-white/15 file:px-3 file:py-2 file:text-white file:text-sm"
-          />
-          <Button type="submit" variant="secondary" disabled={insuranceUploading}>
-            {insuranceUploading ? 'Uploading…' : 'Upload'}
-          </Button>
-        </form>
-        <ErrorText light>{insuranceError}</ErrorText>
-      </Card>
 
       {loading ? (
         <p className="text-white/60">Loading…</p>

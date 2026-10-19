@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { Card, Button, Modal, Input, Label, Select, Badge, ErrorText, EmptyState } from '../components/UI.jsx';
+import { MAINTENANCE_CATEGORIES, categoryLabel } from '../maintenanceCategories.js';
 
-const emptyForm = { unit_id: '', title: '', description: '', priority: 'normal', status: 'open' };
+const emptyForm = { unit_id: '', category: '', title: '', description: '', priority: 'normal', status: 'open' };
 
 export default function Maintenance() {
   const [requests, setRequests] = useState([]);
@@ -64,9 +65,16 @@ export default function Maintenance() {
           {requests.map((r) => (
             <div key={r.id} className="p-4 flex items-center justify-between">
               <div>
-                <div className="font-medium text-white">{r.title}</div>
+                <div className="font-medium text-white flex items-center gap-2">
+                  {r.title}
+                  {categoryLabel(r.category) ? (
+                    <span className="rounded-full bg-white/15 px-2 py-0.5 text-xs font-medium text-white/80">
+                      {categoryLabel(r.category)}
+                    </span>
+                  ) : null}
+                </div>
                 <div className="text-sm text-white/60">
-                  {r.property_name} · Unit {r.unit_number}
+                  {r.unit_label}
                   {r.description ? ` — ${r.description}` : ''}
                 </div>
               </div>
@@ -90,7 +98,18 @@ export default function Maintenance() {
             <Select value={form.unit_id} onChange={(e) => setForm({ ...form, unit_id: e.target.value })} required>
               <option value="">Select a unit</option>
               {units.map((u) => (
-                <option key={u.id} value={u.id}>Unit {u.unit_number}</option>
+                <option key={u.id} value={u.id}>{u.unit_label}</option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label>Problem type</Label>
+            <Select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+              <option value="">Select a type (optional)</option>
+              {MAINTENANCE_CATEGORIES.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
               ))}
             </Select>
           </div>

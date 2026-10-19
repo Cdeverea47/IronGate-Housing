@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../../api.js';
 import { Card, Badge, EmptyState, LinkButton } from '../../components/UI.jsx';
 import { monthsLeftInfo } from '../../leaseUtils.js';
+import { unitName } from '../../unitName.js';
 
 function statusTone(status) {
   if (status === 'active') return 'green';
@@ -44,7 +45,7 @@ export default function TenantDashboard() {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <div className="text-lg font-semibold text-white">
-                      {l.property_name} · Unit {l.unit_number}
+                      {l.property_name} · {unitName(l.unit_number)}
                     </div>
                     <div className="text-sm text-white/60 mt-0.5">
                       {l.address_line1}
@@ -90,7 +91,7 @@ export default function TenantDashboard() {
                       <LinkButton
                         variant="secondary"
                         href={`mailto:${l.landlord_email}?subject=${encodeURIComponent(
-                          `${l.property_name} Unit ${l.unit_number}`
+                          `${l.property_name} ${unitName(l.unit_number)}`
                         )}`}
                       >
                         Email landlord

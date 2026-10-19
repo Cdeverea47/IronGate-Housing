@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../api.js';
 import { Card, Button, Modal, Input, Label, Select, Badge, ErrorText, EmptyState } from '../../components/UI.jsx';
+import { MAINTENANCE_CATEGORIES, categoryLabel } from '../../maintenanceCategories.js';
 
-const emptyForm = { unit_id: '', title: '', description: '', priority: 'normal' };
+const emptyForm = { unit_id: '', category: '', title: '', description: '', priority: 'normal' };
 
 export default function TenantMaintenance() {
   const [requests, setRequests] = useState([]);
@@ -19,7 +20,7 @@ export default function TenantMaintenance() {
         setRequests(r);
         const activeLeases = (overview.leases || []).filter((l) => l.status === 'active');
         const source = activeLeases.length > 0 ? activeLeases : overview.leases || [];
-        setUnits(source.map((l) => ({ id: l.unit_id, unit_number: l.unit_number, property_name: l.property_name })));
+        setUnits(source.map((l) => ({ id: l.unit_id, unit_number: l.unit_number, property_name: l.property_name, unit_label: l.unit_label })));
         setForm((f) => ({ ...f, unit_id: source[0]?.unit_id || '' }));
       })
       .catch((err) => setError(err.message))
@@ -64,9 +65,16 @@ export default function TenantMaintenance() {
           {requests.map((r) => (
             <div key={r.id} className="p-4 flex items-center justify-between">
               <div>
-                <div className="font-medium text-white">{r.title}</div>
+                <div className="font-medium text-white flex items-center gap-2">
+                  {r.title}
+                  {categoryLabel(r.category) ? (
+                    <span className="rounded-full bg-white/15 px-2 py-0.5 text-xs font-medium text-white/80">
+                      {categoryLabel(r.category)}
+                    </span>
+                  ) : null}
+                </div>
                 <div className="text-sm text-white/60">
-                  {r.property_name} · Unit {r.unit_number}
+                  {r.unit_label}
                   {r.description ? ` — ${r.description}` : ''}
                 </div>
               </div>
@@ -89,12 +97,23 @@ export default function TenantMaintenance() {
               <Select value={form.unit_id} onChange={(e) => setForm({ ...form, unit_id: e.target.value })} required>
                 {units.map((u) => (
                   <option key={u.id} value={u.id}>
-                    {u.property_name} · Unit {u.unit_number}
+                    {u.unit_label}
                   </option>
                 ))}
               </Select>
             </div>
           ) : null}
+          <div>
+            <Label>Problem type</Label>
+            <Select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+              <option value="">Select a type (optional)</option>
+              {MAINTENANCE_CATEGORIES.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </Select>
+          </div>
           <div>
             <Label>Title</Label>
             <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required />

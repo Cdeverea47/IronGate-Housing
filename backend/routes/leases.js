@@ -1,6 +1,8 @@
 const express = require('express');
 const db = require('../db');
+const { regenerateForLease, scheduleLeaseTerm, cancelUpcomingCharges, monthsThroughEnd } = require('../lib/rentCharges');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { syncUnitStatus } = require('../lib/unitStatus');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('landlord'));
@@ -50,6 +52,10 @@ router.post('/', (req, res) => {
   }
   if (!ownsUnit(unit_id, req.user.id)) return res.status(404).json({ error: 'Unit not found' });
   if (!ownsTenant(tenant_id, req.user.id)) return res.status(404).json({ error: 'Tenant not found' });
+  if ((status || 'active') === 'active') {
+    const taken = db.prepare("SELECT 1 FROM leases WHERE unit_id = ? AND status = 'active'").get(unit_id);
+    if (taken) return res.status(409).json({ error: 'This unit already has an active lease — end it first.' });
+  }
 
   const info = db
     .prepare(
@@ -58,8 +64,40 @@ router.post('/', (req, res) => {
     )
     .run(unit_id, tenant_id, start_date, end_date || null, rent_amount, deposit_amount || 0, status || 'active');
 
-  db.prepare('UPDATE units SET status = ? WHERE id = ?').run('occupied', unit_id);
-  res.status(201).json(db.prepare('SELECT * FROM leases WHERE id = ?').get(info.lastInsertRowid));
+  syncUnitStatus(unit_id);
+  // An end date automatically schedules the whole term's rent charges.
+  const chargesCreated = scheduleLeaseTerm(info.lastInsertRowid);
+  res.status(201).json({ ...db.prepare('SELECT * FROM leases WHERE id = ?').get(info.lastInsertRowid), charges_created: chargesCreated });
+});
+
+// Rent setup: amount, due day of month, and whether the app creates each
+// month's charge automatically. Also creates the upcoming charges right away.
+router.put('/:id/rent', (req, res) => {
+  const existing = ownsLease(req.params.id, req.user.id);
+  if (!existing) return res.status(404).json({ error: 'Lease not found' });
+  const { rent_amount, due_day, autogenerate, generate_months } = req.body;
+  const amount = Number(rent_amount);
+  const day = Number(due_day);
+  if (!(amount > 0)) return res.status(400).json({ error: 'rent_amount must be greater than 0' });
+  if (!Number.isInteger(day) || day < 1 || day > 28) {
+    return res.status(400).json({ error: 'due_day must be a whole number from 1 to 28' });
+  }
+  const months = Math.min(12, Math.max(0, parseInt(generate_months, 10) || 0));
+  const auto = autogenerate ? 1 : 0;
+
+  db.prepare('UPDATE leases SET rent_amount = ?, rent_due_day = ?, rent_autogenerate = ? WHERE id = ?').run(
+    amount,
+    day,
+    auto,
+    existing.id
+  );
+  db.prepare('UPDATE units SET rent_amount = ? WHERE id = ?').run(amount, existing.unit_id);
+
+  // Rebuild upcoming unpaid auto-charges with the new terms, then create the
+  // requested number of months (at least this + next month when auto is on).
+  const toEnd = monthsThroughEnd(existing.end_date);
+  const created = regenerateForLease(existing.id, auto ? Math.max(2, months, toEnd) : months);
+  res.json({ lease: db.prepare('SELECT * FROM leases WHERE id = ?').get(existing.id), charges_created: created });
 });
 
 router.put('/:id', (req, res) => {
@@ -84,16 +122,24 @@ router.put('/:id', (req, res) => {
     endDateChanged ? null : existing.renewal_reminder_sent_at,
     req.params.id
   );
+  let chargesCreated = 0;
+  syncUnitStatus(existing.unit_id);
   if (status === 'ended' || status === 'terminated') {
-    db.prepare('UPDATE units SET status = ? WHERE id = ?').run('vacant', existing.unit_id);
+    cancelUpcomingCharges(existing.id);
+  } else if (resolvedEndDate && (endDateChanged || (rent_amount !== undefined && Number(rent_amount) !== existing.rent_amount))) {
+    // New/changed end date (or rent) → rebuild the term's upcoming charges.
+    chargesCreated = scheduleLeaseTerm(existing.id);
+  } else if (endDateChanged && !resolvedEndDate) {
+    chargesCreated = regenerateForLease(existing.id, 2);
   }
-  res.json(db.prepare('SELECT * FROM leases WHERE id = ?').get(req.params.id));
+  res.json({ ...db.prepare('SELECT * FROM leases WHERE id = ?').get(req.params.id), charges_created: chargesCreated });
 });
 
 router.delete('/:id', (req, res) => {
   const existing = ownsLease(req.params.id, req.user.id);
   if (!existing) return res.status(404).json({ error: 'Lease not found' });
   db.prepare('DELETE FROM leases WHERE id = ?').run(req.params.id);
+  syncUnitStatus(existing.unit_id);
   res.status(204).end();
 });
 

@@ -3,22 +3,14 @@ import { Link } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { Card, Button, Input, Textarea, Label, Select, ErrorText, PasswordInput } from '../components/UI.jsx';
+import { GetPaidCard, PaymentMethodsCard } from '../components/PaymentSetupCards.jsx';
+import PaymentPlanCard from '../components/PaymentPlanCard.jsx';
 
 const PAYMENT_METHODS = [
   { value: 'card', label: 'Card (Stripe)' },
   { value: 'bank_transfer', label: 'Bank transfer' },
   { value: 'zelle', label: 'Zelle' },
 ];
-
-const INSTALLMENT_PLANS = [
-  { value: 'full', label: 'Pay in full each month' },
-  { value: 'split2', label: 'Split into 2 payments' },
-  { value: 'split4', label: 'Split into 4 payments' },
-];
-
-function planLabel(value) {
-  return INSTALLMENT_PLANS.find((p) => p.value === value)?.label || value;
-}
 
 function initials(name) {
   if (!name) return '?';
@@ -135,31 +127,9 @@ export default function Profile() {
 function ProfileTab({ profile, setProfile, isTenant, updateUser }) {
   const [name, setName] = useState(profile.name || '');
   const [paymentMethod, setPaymentMethod] = useState(profile.payment_method || '');
-  const [bankName, setBankName] = useState(profile.bank_name || '');
-  const [bankAccountName, setBankAccountName] = useState(profile.bank_account_name || '');
-  const [bankAccountNumber, setBankAccountNumber] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState(null);
-
-  const [overview, setOverview] = useState(null);
-  const [requests, setRequests] = useState([]);
-  const [requestPlan, setRequestPlan] = useState('full');
-  const [requestDuration, setRequestDuration] = useState('temporary');
-  const [requestEndDate, setRequestEndDate] = useState('');
-  const [requestNote, setRequestNote] = useState('');
-  const [requestSaving, setRequestSaving] = useState(false);
-  const [requestError, setRequestError] = useState(null);
-
-  useEffect(() => {
-    if (!isTenant) return;
-    Promise.all([api.get('/portal/overview'), api.get('/portal/payment-plan-requests')])
-      .then(([o, r]) => {
-        setOverview(o);
-        setRequests(r);
-      })
-      .catch(() => {});
-  }, [isTenant]);
 
   async function handleSave(e) {
     e.preventDefault();
@@ -170,14 +140,10 @@ function ProfileTab({ profile, setProfile, isTenant, updateUser }) {
       const body = { name };
       if (isTenant) {
         body.payment_method = paymentMethod || null;
-        body.bank_name = bankName || null;
-        body.bank_account_name = bankAccountName || null;
-        if (bankAccountNumber) body.bank_account_number = bankAccountNumber;
       }
       const updated = await api.patch('/auth/me', body);
       setProfile(updated);
       updateUser(updated);
-      setBankAccountNumber('');
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (err) {
@@ -186,34 +152,6 @@ function ProfileTab({ profile, setProfile, isTenant, updateUser }) {
       setSaving(false);
     }
   }
-
-  async function handlePlanRequest(e) {
-    e.preventDefault();
-    setRequestError(null);
-    const activeLease = overview?.leases?.[0];
-    if (!activeLease) {
-      setRequestError('No lease found on your account yet');
-      return;
-    }
-    setRequestSaving(true);
-    try {
-      const row = await api.post('/portal/payment-plan-requests', {
-        tenant_id: activeLease.tenant_id,
-        installment_plan: requestPlan,
-        duration: requestDuration,
-        temporary_end_date: requestDuration === 'temporary' ? requestEndDate || null : null,
-        note: requestNote || null,
-      });
-      setRequests((prev) => [row, ...prev]);
-      setRequestNote('');
-    } catch (err) {
-      setRequestError(err.message);
-    } finally {
-      setRequestSaving(false);
-    }
-  }
-
-  const activeLease = overview?.leases?.[0];
 
   return (
     <div className="space-y-4">
@@ -243,28 +181,6 @@ function ProfileTab({ profile, setProfile, isTenant, updateUser }) {
                 </Select>
               </div>
 
-              <div className="pt-2 border-t border-white/10 space-y-3">
-                <Label>Bank information</Label>
-                <p className="text-xs text-white/50 -mt-2">
-                  For your reference only — we store just the last 4 digits of your account number, never the full
-                  number.
-                </p>
-                <Input placeholder="Bank name" value={bankName} onChange={(e) => setBankName(e.target.value)} />
-                <Input
-                  placeholder="Account holder name"
-                  value={bankAccountName}
-                  onChange={(e) => setBankAccountName(e.target.value)}
-                />
-                <Input
-                  placeholder={
-                    profile.bank_account_last4
-                      ? `Account number (on file: •••• ${profile.bank_account_last4})`
-                      : 'Account number'
-                  }
-                  value={bankAccountNumber}
-                  onChange={(e) => setBankAccountNumber(e.target.value)}
-                />
-              </div>
             </>
           ) : null}
 
@@ -275,80 +191,9 @@ function ProfileTab({ profile, setProfile, isTenant, updateUser }) {
         </form>
       </Card>
 
-      {isTenant ? (
-        <Card className="p-5 space-y-4">
-          <div>
-            <h3 className="text-sm font-medium text-white/90">Payment plan</h3>
-            {activeLease?.active_installment_plan ? (
-              <p className="text-sm text-white/70 mt-1">
-                Current plan: <strong>{planLabel(activeLease.active_installment_plan)}</strong>
-                {activeLease.active_installment_plan_until
-                  ? ` until ${activeLease.active_installment_plan_until}`
-                  : ' (permanent)'}
-              </p>
-            ) : (
-              <p className="text-sm text-white/50 mt-1">No special plan on file — you're on the standard full payment.</p>
-            )}
-          </div>
+      {isTenant ? <PaymentMethodsCard /> : <GetPaidCard />}
 
-          <form onSubmit={handlePlanRequest} className="space-y-3 pt-3 border-t border-white/10">
-            <p className="text-xs text-white/50">
-              Requesting a plan sends it to your landlord for approval — it won't take effect until they approve it.
-            </p>
-            <div>
-              <Label>Requested plan</Label>
-              <Select value={requestPlan} onChange={(e) => setRequestPlan(e.target.value)}>
-                {INSTALLMENT_PLANS.map((p) => (
-                  <option key={p.value} value={p.value}>
-                    {p.label}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div>
-              <Label>Duration</Label>
-              <Select value={requestDuration} onChange={(e) => setRequestDuration(e.target.value)}>
-                <option value="temporary">Temporary</option>
-                <option value="permanent">Permanent</option>
-              </Select>
-            </div>
-            {requestDuration === 'temporary' ? (
-              <div>
-                <Label>Until</Label>
-                <Input type="date" value={requestEndDate} onChange={(e) => setRequestEndDate(e.target.value)} />
-              </div>
-            ) : null}
-            <div>
-              <Label>Note to landlord (optional)</Label>
-              <Textarea rows={3} value={requestNote} onChange={(e) => setRequestNote(e.target.value)} />
-            </div>
-            <ErrorText>{requestError}</ErrorText>
-            <Button type="submit" variant="secondary" disabled={requestSaving}>
-              {requestSaving ? 'Sending…' : 'Send request'}
-            </Button>
-          </form>
-
-          {requests.length > 0 ? (
-            <div className="pt-3 border-t border-white/10 space-y-2">
-              <h4 className="text-xs font-medium text-white/60 uppercase tracking-wide">Your requests</h4>
-              {requests.map((r) => (
-                <div key={r.id} className="flex items-center justify-between text-sm">
-                  <span className="text-white/80">
-                    {planLabel(r.installment_plan)} · {r.duration}
-                  </span>
-                  <span
-                    className={`text-xs font-medium ${
-                      r.status === 'approved' ? 'text-emerald-300' : r.status === 'denied' ? 'text-rose-300' : 'text-amber-300'
-                    }`}
-                  >
-                    {r.status}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </Card>
-      ) : null}
+      {isTenant ? <PaymentPlanCard /> : null}
     </div>
   );
 }

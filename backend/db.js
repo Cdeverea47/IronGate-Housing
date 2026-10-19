@@ -246,6 +246,36 @@ ensureColumn('users', 'email_notifications_enabled', 'INTEGER NOT NULL DEFAULT 1
 ensureColumn('users', 'bank_name', 'TEXT');
 ensureColumn('users', 'bank_account_name', 'TEXT');
 ensureColumn('users', 'bank_account_last4', 'TEXT');
+// Stripe Connect: a landlord's connected account (where rent is paid out to
+// their own bank). Bank details are collected by Stripe's hosted onboarding
+// and never touch this server.
+// Rent setup: which day of the month rent is due, and whether the app should
+// create each month's rent charge automatically (see lib/rentCharges.js).
+// A single-family home has no separate units: it gets one default unit that
+// represents the whole property (shown by the property name alone).
+// What kind of problem a maintenance request is (plumbing, electrical, ...) — see lib/maintenanceCategories.js.
+ensureColumn('maintenance_requests', 'category', 'TEXT');
+ensureColumn('units', 'is_default', 'INTEGER NOT NULL DEFAULT 0');
+ensureColumn('leases', 'rent_due_day', 'INTEGER');
+ensureColumn('leases', 'rent_autogenerate', 'INTEGER NOT NULL DEFAULT 0');
+ensureColumn('payments', 'auto_generated', 'INTEGER NOT NULL DEFAULT 0');
+// Who started a payment plan: the tenant (a request) or the landlord (set directly).
+ensureColumn('payment_plan_requests', 'initiated_by', "TEXT NOT NULL DEFAULT 'tenant'");
+ensureColumn('users', 'stripe_account_id', 'TEXT');
+ensureColumn('users', 'stripe_charges_enabled', 'INTEGER NOT NULL DEFAULT 0');
+ensureColumn('users', 'stripe_payouts_enabled', 'INTEGER NOT NULL DEFAULT 0');
+// Rent is charged directly on the landlord's connected account, so a tenant's
+// Stripe Customer (and the payment methods saved on it) lives per landlord.
+db.exec(`
+CREATE TABLE IF NOT EXISTS stripe_customers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  stripe_account_id TEXT NOT NULL,
+  stripe_customer_id TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (user_id, stripe_account_id)
+);
+`);
 
 // Databases created before tenant accounts existed have a single-column
 // UNIQUE constraint on users.email, which blocks the same person from having

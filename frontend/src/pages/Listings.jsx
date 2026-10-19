@@ -12,6 +12,7 @@ import {
   ErrorText,
   EmptyState,
 } from '../components/UI.jsx';
+import { unitName } from '../unitName.js';
 
 const emptyForm = {
   unit_id: '',
@@ -33,7 +34,7 @@ function buildListingText(listing) {
   const address = [listing.address_line1, listing.city, listing.state, listing.zip].filter(Boolean).join(', ');
   const lines = [
     listing.title,
-    `${address} — Unit ${listing.unit_number}`,
+    `${address} — ${unitName(listing.unit_number)}`,
     '',
     `Rent: ${listing.rent_amount ? `${money(listing.rent_amount)}/mo` : 'Contact for pricing'}`,
     listing.available_date ? `Available: ${listing.available_date}` : null,
@@ -81,7 +82,7 @@ export default function Listings() {
     const propertyById = Object.fromEntries(properties.map((p) => [p.id, p]));
     return units.map((u) => ({
       ...u,
-      label: `${propertyById[u.property_id]?.name || 'Unknown property'} — Unit ${u.unit_number}`,
+      label: `${propertyById[u.property_id]?.name || 'Unknown property'} — ${unitName(u.unit_number)}`,
     }));
   }, [properties, units]);
 
@@ -180,7 +181,7 @@ export default function Listings() {
               <div className="min-w-0">
                 <div className="font-medium text-white truncate">{listing.title}</div>
                 <div className="text-sm text-white/60 truncate">
-                  {listing.property_name} · Unit {listing.unit_number}
+                  {listing.property_name} · {unitName(listing.unit_number)}
                   {listing.rent_amount ? ` · ${money(listing.rent_amount)}/mo` : ''}
                   {listing.available_date ? ` · avail ${listing.available_date}` : ''}
                 </div>

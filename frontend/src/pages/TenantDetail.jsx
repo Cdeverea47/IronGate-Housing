@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../api.js';
 import { Card, Badge, Textarea, Button, LinkButton, Label, ErrorText } from '../components/UI.jsx';
+import { unitName } from '../unitName.js';
 
 export default function TenantDetail() {
   const { id } = useParams();
@@ -86,7 +87,7 @@ export default function TenantDetail() {
             {tenant.leases.map((l) => (
               <div key={l.id} className="p-4 flex items-center justify-between">
                 <div>
-                  <div className="font-medium text-white">{l.property_name} · Unit {l.unit_number}</div>
+                  <div className="font-medium text-white">{l.property_name} · {unitName(l.unit_number)}</div>
                   <div className="text-sm text-white/60">
                     {l.start_date} — {l.end_date || 'ongoing'} · ${l.rent_amount}/mo
                   </div>

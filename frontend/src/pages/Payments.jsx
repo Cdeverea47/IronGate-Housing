@@ -1,7 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { Card, Button, Modal, Input, Label, Select, Badge, ErrorText, EmptyState } from '../components/UI.jsx';
+import { GetPaidCard } from '../components/PaymentSetupCards.jsx';
+import { unitName } from '../unitName.js';
 
+const emptySchedule = { lease_id: '', label: '', amount: '', first_due_date: '', repeat: 'once', count: '3' };
 const emptyForm = { lease_id: '', amount: '', due_date: '', paid_date: '', method: 'bank_transfer', status: 'pending', notes: '' };
 
 const methodLabels = {
@@ -26,6 +29,11 @@ export default function Payments() {
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [schedule, setSchedule] = useState(emptySchedule);
+  const [scheduleError, setScheduleError] = useState(null);
+  const [scheduling, setScheduling] = useState(false);
   const [linkModal, setLinkModal] = useState({ open: false, url: '', copied: false });
   const [linkError, setLinkError] = useState(null);
   const [linkLoadingId, setLinkLoadingId] = useState(null);
@@ -48,17 +56,58 @@ export default function Payments() {
 
   useEffect(load, []);
 
+  // Taking a card: the card number is typed on Stripe's own secure page, never
+  // into this app, so it's never sent to or stored on our server.
+  const takeCardNow = form.method === 'card' && form.status !== 'paid';
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError(null);
+    setSubmitting(true);
     try {
-      await api.post('/payments', form);
+      const created = await api.post('/payments', form);
+      if (takeCardNow) {
+        try {
+          const { url } = await api.post(`/payments/${created.id}/checkout`);
+          window.location.href = url;
+          return;
+        } catch (err) {
+          // The payment is saved either way; just couldn't open the card page.
+          setError(`Payment saved, but the secure card page couldn't open: ${err.message}`);
+          load();
+          return;
+        }
+      }
       setModalOpen(false);
       setForm(emptyForm);
       load();
     } catch (err) {
       setError(err.message);
+    } finally {
+      setSubmitting(false);
     }
+  }
+
+  async function handleSchedule(e) {
+    e.preventDefault();
+    setScheduleError(null);
+    setScheduling(true);
+    try {
+      await api.post('/payments/schedule', schedule);
+      setScheduleOpen(false);
+      setSchedule(emptySchedule);
+      load();
+    } catch (err) {
+      setScheduleError(err.message);
+    } finally {
+      setScheduling(false);
+    }
+  }
+
+  async function removePayment(p) {
+    if (!confirm(`Remove the $${p.amount} payment due ${p.due_date}?`)) return;
+    await api.del(`/payments/${p.id}`);
+    load();
   }
 
   async function confirmMarkPaid(e) {
@@ -118,8 +167,15 @@ export default function Payments() {
           <h1 className="text-2xl font-semibold text-white">Payments</h1>
           <p className="text-white/60 text-sm mt-1">Rent due and rent received</p>
         </div>
-        <Button onClick={() => setModalOpen(true)} disabled={leases.length === 0}>+ Add payment</Button>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={() => setScheduleOpen(true)} disabled={leases.length === 0}>
+            Schedule future payments
+          </Button>
+          <Button onClick={() => setModalOpen(true)} disabled={leases.length === 0}>+ Add payment</Button>
+        </div>
       </div>
+
+      <GetPaidCard />
 
       <Card className="p-4">
         <form onSubmit={saveZelleContact} className="flex flex-wrap items-end gap-3">
@@ -153,10 +209,11 @@ export default function Payments() {
             <div key={p.id} className="p-4 flex items-center justify-between">
               <div>
                 <div className="font-medium text-white">
-                  {p.first_name} {p.last_name} · {p.property_name} Unit {p.unit_number}
+                  {p.first_name} {p.last_name} · {p.property_name} {unitName(p.unit_number)}
                 </div>
                 <div className="text-sm text-white/60">
-                  ${p.amount} due {p.due_date}
+                  {p.notes ? `${p.notes} · ` : ''}${p.amount} due {p.due_date}
+                  {p.status !== 'paid' && p.due_date > new Date().toISOString().slice(0, 10) ? ' · upcoming' : ''}
                   {p.paid_date ? ` · paid ${p.paid_date}${p.method ? ` via ${methodLabels[p.method] || p.method}` : ''}` : ''}
                 </div>
               </div>
@@ -177,6 +234,13 @@ export default function Payments() {
                     >
                       Mark paid manually
                     </Button>
+                    <button
+                      type="button"
+                      onClick={() => removePayment(p)}
+                      className="text-xs text-rose-300 hover:text-rose-200"
+                    >
+                      Remove
+                    </button>
                   </>
                 )}
               </div>
@@ -184,6 +248,60 @@ export default function Payments() {
           ))}
         </Card>
       )}
+
+      <Modal open={scheduleOpen} onClose={() => setScheduleOpen(false)} title="Schedule future payments">
+        <form onSubmit={handleSchedule} className="space-y-3">
+          <p className="text-xs text-white/60">
+            Tenants see these under "Upcoming" right away and can pay any of them at any time — before or on the due
+            date.
+          </p>
+          <div>
+            <Label>Lease</Label>
+            <Select value={schedule.lease_id} onChange={(e) => setSchedule({ ...schedule, lease_id: e.target.value })} required>
+              <option value="">Select a lease</option>
+              {leases.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.first_name} {l.last_name} · {l.property_name} {unitName(l.unit_number)}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label>What's it for? (optional)</Label>
+            <Input value={schedule.label} onChange={(e) => setSchedule({ ...schedule, label: e.target.value })} placeholder="e.g. Rent, Pet fee, Utilities" maxLength={80} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Amount ($)</Label>
+              <Input type="number" step="0.01" min="0" value={schedule.amount} onChange={(e) => setSchedule({ ...schedule, amount: e.target.value })} required />
+            </div>
+            <div>
+              <Label>First due date</Label>
+              <Input type="date" min={new Date().toISOString().slice(0, 10)} value={schedule.first_due_date} onChange={(e) => setSchedule({ ...schedule, first_due_date: e.target.value })} required />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Repeat</Label>
+              <Select value={schedule.repeat} onChange={(e) => setSchedule({ ...schedule, repeat: e.target.value })}>
+                <option value="once">Just once</option>
+                <option value="weekly">Every week</option>
+                <option value="monthly">Every month</option>
+              </Select>
+            </div>
+            {schedule.repeat !== 'once' ? (
+              <div>
+                <Label>How many payments</Label>
+                <Input type="number" min="1" max="24" value={schedule.count} onChange={(e) => setSchedule({ ...schedule, count: e.target.value })} required />
+              </div>
+            ) : null}
+          </div>
+          <ErrorText>{scheduleError}</ErrorText>
+          <Button type="submit" className="w-full" disabled={scheduling}>
+            {scheduling ? 'Scheduling…' : 'Schedule payments'}
+          </Button>
+        </form>
+      </Modal>
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Add payment">
         <form onSubmit={handleSubmit} className="space-y-3">
@@ -193,7 +311,7 @@ export default function Payments() {
               <option value="">Select a lease</option>
               {leases.map((l) => (
                 <option key={l.id} value={l.id}>
-                  {l.first_name} {l.last_name} · {l.property_name} Unit {l.unit_number}
+                  {l.first_name} {l.last_name} · {l.property_name} {unitName(l.unit_number)}
                 </option>
               ))}
             </Select>
@@ -222,14 +340,23 @@ export default function Payments() {
               <Select value={form.method} onChange={(e) => setForm({ ...form, method: e.target.value })}>
                 {Object.entries(methodLabels).map(([value, label]) => (
                   <option key={value} value={value}>
-                    {label}
+                    {value === 'card' ? 'Card (debit or credit)' : label}
                   </option>
                 ))}
               </Select>
             </div>
           </div>
+          {form.method === 'card' ? (
+            <p className="text-xs text-white/60 rounded-lg bg-white/5 px-3 py-2">
+              {takeCardNow
+                ? "You'll enter the debit or credit card on Stripe's secure payment page — the card number never touches this app or our servers. Requires your bank to be connected under Get paid."
+                : 'Status is Paid, so this just records a card payment already taken — no card details are collected.'}
+            </p>
+          ) : null}
           <ErrorText>{error}</ErrorText>
-          <Button type="submit" className="w-full">Save payment</Button>
+          <Button type="submit" className="w-full" disabled={submitting}>
+            {submitting ? 'Saving…' : takeCardNow ? 'Save & enter card securely' : 'Save payment'}
+          </Button>
         </form>
       </Modal>
 

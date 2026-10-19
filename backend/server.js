@@ -22,7 +22,9 @@ const paymentPlanRoutes = require('./routes/paymentPlans');
 const notificationRoutes = require('./routes/notifications');
 const portalRoutes = require('./routes/portal');
 const webhookRoutes = require('./routes/webhooks');
+const connectRoutes = require('./routes/connect');
 const { checkLeaseRenewals } = require('./lib/leaseRenewals');
+const { runAutoGeneration } = require('./lib/rentCharges');
 
 const app = express();
 app.use(cors());
@@ -53,6 +55,7 @@ app.use('/api/public/screening', publicScreeningRoutes);
 app.use('/api/payment-plans', paymentPlanRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/portal', portalRoutes);
+app.use('/api/connect', connectRoutes);
 
 // serve built frontend in production, if present
 const frontendDist = path.join(__dirname, '..', 'frontend', 'dist');
@@ -80,3 +83,16 @@ checkLeaseRenewals().catch((err) => console.error('Lease renewal check failed:',
 setInterval(() => {
   checkLeaseRenewals().catch((err) => console.error('Lease renewal check failed:', err.message));
 }, ONE_DAY_MS);
+
+// Rent charges: keep the next couple of months of auto-generated rent created.
+function runRentGeneration() {
+  try {
+    const created = runAutoGeneration();
+    if (created > 0) console.log(`Created ${created} rent charge(s)`);
+  } catch (err) {
+    console.error('Rent charge generation failed:', err.message);
+  }
+}
+runRentGeneration();
+try { require('./lib/unitStatus').syncAllUnitStatuses(); } catch (e) { console.error('unit status sync failed', e); }
+setInterval(runRentGeneration, ONE_DAY_MS);

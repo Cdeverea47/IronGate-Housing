@@ -4,6 +4,7 @@ import { api } from '../api.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { StatCard, Card, Badge, Input, Button, Select } from '../components/UI.jsx';
 import { propertyTypeLabel } from '../propertyTypes.js';
+import { unitName } from '../unitName.js';
 
 const money = (n) => `$${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -320,6 +321,7 @@ export default function Dashboard() {
   const [upcomingPayments, setUpcomingPayments] = useState([]);
   const [renewals, setRenewals] = useState([]);
   const [draftListings, setDraftListings] = useState([]);
+  const [planRequests, setPlanRequests] = useState([]);
   const [error, setError] = useState(null);
   const [now, setNow] = useState(new Date());
   const [ackedAutoIds, setAckedAutoIds] = useState(() => new Set());
@@ -332,10 +334,12 @@ export default function Dashboard() {
       api.get('/payments?status=pending'),
       api.get('/listings'),
       api.get('/tasks/acks'),
+      api.get('/payment-plans').catch(() => []),
     ])
-      .then(([s, m, insurance, payments, listings, acks]) => {
+      .then(([s, m, insurance, payments, listings, acks, planRequests]) => {
+        setPlanRequests(planRequests.filter((r) => r.status === 'pending' && r.initiated_by !== 'landlord'));
         setSummary(s);
-        setMaintenance(m.slice(0, 5));
+        setMaintenance(m.slice(0, 10));
         const cutoff = new Date();
         cutoff.setDate(cutoff.getDate() + 30);
         const cutoffStr = cutoff.toISOString().slice(0, 10);
@@ -370,20 +374,25 @@ export default function Dashboard() {
       .filter((p) => p.due_date < todayStr)
       .map((p) => ({
         id: `pay-${p.id}`,
-        label: `Rent overdue — ${p.first_name} ${p.last_name}, ${p.property_name} Unit ${p.unit_number}`,
+        label: `Rent overdue — ${p.first_name} ${p.last_name}, ${p.property_name} ${unitName(p.unit_number)}`,
         tone: 'red',
         badge: 'Overdue',
         link: '/payments',
       })),
-    ...maintenance
-      .filter((m) => m.priority === 'high')
-      .map((m) => ({
-        id: `maint-${m.id}`,
-        label: `${m.title} — ${m.property_name} Unit ${m.unit_number}`,
-        tone: 'red',
-        badge: 'High priority',
-        link: '/maintenance',
-      })),
+    ...maintenance.map((m) => ({
+      id: `maint-${m.id}`,
+      label: `${m.title} — ${m.unit_label || `${m.property_name} ${unitName(m.unit_number)}`}`,
+      tone: m.priority === 'high' ? 'red' : 'amber',
+      badge: m.priority === 'high' ? 'High priority' : 'Maintenance request',
+      link: '/maintenance',
+    })),
+    ...planRequests.map((r) => ({
+      id: `plan-${r.id}`,
+      label: `Payment plan request — ${r.first_name} ${r.last_name}`,
+      tone: 'amber',
+      badge: 'Request',
+      link: '/payment-plans',
+    })),
     ...renewals.map((p) => ({
       id: `ins-${p.id}`,
       label: `${p.property_name} — ${p.policy_type === 'homeowner' ? "homeowner's" : 'rental'} insurance renewal`,
@@ -448,7 +457,7 @@ export default function Dashboard() {
                   <div key={p.id} className="p-4 flex items-center justify-between">
                     <div>
                       <div className="font-medium text-white">
-                        {p.first_name} {p.last_name} · {p.property_name} Unit {p.unit_number}
+                        {p.first_name} {p.last_name} · {p.property_name} {unitName(p.unit_number)}
                       </div>
                       <div className="text-sm text-white/60">
                         {money(p.amount)} due {p.due_date}
@@ -473,7 +482,7 @@ export default function Dashboard() {
                   <div>
                     <div className="font-medium text-white">{m.title}</div>
                     <div className="text-sm text-white/60">
-                      {m.property_name} · Unit {m.unit_number}
+                      {m.unit_label || `${m.property_name} · ${unitName(m.unit_number)}`}
                     </div>
                   </div>
                   <Badge tone={m.priority === 'high' ? 'red' : m.priority === 'low' ? 'slate' : 'amber'}>{m.priority}</Badge>

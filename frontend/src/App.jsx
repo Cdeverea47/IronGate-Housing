@@ -31,6 +31,7 @@ import TenantDashboard from './pages/tenant/TenantDashboard.jsx';
 import TenantPayments from './pages/tenant/TenantPayments.jsx';
 import TenantMaintenance from './pages/tenant/TenantMaintenance.jsx';
 import TenantDocuments from './pages/tenant/TenantDocuments.jsx';
+import TenantInsurance from './pages/tenant/TenantInsurance.jsx';
 
 function Protected({ children }) {
   const { user } = useAuth();
@@ -67,6 +68,7 @@ function TenantRoutes() {
     <>
       <Route path="/" element={<Protected><TenantDashboard /></Protected>} />
       <Route path="/payments" element={<Protected><TenantPayments /></Protected>} />
+      <Route path="/insurance" element={<Protected><TenantInsurance /></Protected>} />
       <Route path="/maintenance" element={<Protected><TenantMaintenance /></Protected>} />
       <Route path="/documents" element={<Protected><TenantDocuments /></Protected>} />
       <Route path="/profile" element={<Protected><Profile /></Protected>} />

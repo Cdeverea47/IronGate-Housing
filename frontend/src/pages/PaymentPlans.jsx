@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
-import { Card, Button, Badge, EmptyState } from '../components/UI.jsx';
+import { Card, Button, Badge, EmptyState, Input, Label, Select, ErrorText } from '../components/UI.jsx';
 
 const PLAN_LABELS = {
   full: 'Pay in full each month',
@@ -13,6 +13,35 @@ export default function PaymentPlans() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [busyId, setBusyId] = useState(null);
+  const [tenants, setTenants] = useState([]);
+  const [assign, setAssign] = useState({ tenant_id: '', installment_plan: 'split2', duration: 'temporary', temporary_end_date: '', note: '' });
+  const [assignError, setAssignError] = useState(null);
+  const [assigning, setAssigning] = useState(false);
+  const [assigned, setAssigned] = useState(false);
+
+  useEffect(() => {
+    api.get('/tenants').then(setTenants).catch(() => {});
+  }, []);
+
+  async function handleAssign(e) {
+    e.preventDefault();
+    setAssignError(null);
+    setAssigning(true);
+    try {
+      await api.post('/payment-plans/assign', {
+        ...assign,
+        temporary_end_date: assign.duration === 'temporary' ? assign.temporary_end_date : null,
+      });
+      setAssign({ ...assign, note: '' });
+      setAssigned(true);
+      setTimeout(() => setAssigned(false), 2500);
+      load();
+    } catch (err) {
+      setAssignError(err.message);
+    } finally {
+      setAssigning(false);
+    }
+  }
 
   function load() {
     setLoading(true);
@@ -41,15 +70,69 @@ export default function PaymentPlans() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold text-white">Payment plans</h1>
-        <p className="text-white/60 text-sm mt-1">Review payment plan requests from your tenants</p>
+        <p className="text-white/60 text-sm mt-1">Set a plan for a tenant, or review their requests</p>
       </div>
+
+      <Card className="p-5">
+        <h2 className="text-sm font-medium text-white/90">Set a plan for a tenant</h2>
+        <p className="text-xs text-white/50 mt-1 mb-4">
+          Takes effect right away — no request from the tenant needed. They're notified by email. Choose "Pay in full"
+          to remove a plan.
+        </p>
+        <form onSubmit={handleAssign} className="space-y-3">
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div>
+              <Label>Tenant</Label>
+              <Select value={assign.tenant_id} onChange={(e) => setAssign({ ...assign, tenant_id: e.target.value })} required>
+                <option value="">Select a tenant</option>
+                {tenants.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.first_name} {t.last_name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <Label>Plan</Label>
+              <Select value={assign.installment_plan} onChange={(e) => setAssign({ ...assign, installment_plan: e.target.value })}>
+                {Object.entries(PLAN_LABELS).map(([v, l]) => (
+                  <option key={v} value={v}>
+                    {l}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <Label>Duration</Label>
+              <Select value={assign.duration} onChange={(e) => setAssign({ ...assign, duration: e.target.value })}>
+                <option value="temporary">Temporary</option>
+                <option value="permanent">Permanent</option>
+              </Select>
+            </div>
+            {assign.duration === 'temporary' ? (
+              <div>
+                <Label>Until</Label>
+                <Input type="date" value={assign.temporary_end_date} onChange={(e) => setAssign({ ...assign, temporary_end_date: e.target.value })} required />
+              </div>
+            ) : null}
+          </div>
+          <div>
+            <Label>Note to tenant (optional)</Label>
+            <Input value={assign.note} onChange={(e) => setAssign({ ...assign, note: e.target.value })} />
+          </div>
+          <ErrorText>{assignError}</ErrorText>
+          <Button type="submit" disabled={assigning}>
+            {assigning ? 'Saving…' : assigned ? 'Plan set ✓' : 'Set plan'}
+          </Button>
+        </form>
+      </Card>
 
       {error ? <p className="text-rose-200 text-sm">{error}</p> : null}
 
       {loading ? (
         <p className="text-white/60">Loading…</p>
       ) : requests.length === 0 ? (
-        <EmptyState message="No payment plan requests yet." />
+        <EmptyState message="No payment plans or requests yet." />
       ) : (
         <Card className="divide-y divide-white/10">
           {requests.map((r) => (
@@ -59,6 +142,7 @@ export default function PaymentPlans() {
                   {r.first_name} {r.last_name}
                 </div>
                 <div className="text-sm text-white/60 truncate">
+                  {r.initiated_by === 'landlord' ? 'Set by you · ' : ''}
                   {PLAN_LABELS[r.installment_plan] || r.installment_plan} · {r.duration}
                   {r.duration === 'temporary' && r.temporary_end_date ? ` until ${r.temporary_end_date}` : ''}
                 </div>

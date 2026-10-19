@@ -162,3 +162,34 @@ and visit `http://localhost:4000`.
 - Email notifications are optional — if `RESEND_API_KEY` isn't set, emails are simply skipped; in-app notifications (the bell icon) work either way.
 - Zelle is supported as a manual payment method with a saved contact reminder, not a live integration — no third-party app can send, request, or confirm Zelle payments automatically.
 - Only card payments are enabled by default. Stripe Checkout also supports ACH bank transfers and other methods, which you can turn on from the Stripe Dashboard under Checkout settings (may require additional verification).
+
+## Online rent payments with Stripe Connect
+
+Landlords connect their own bank account; tenants pay rent by card or bank (ACH) and the money is
+deposited straight to the landlord. IronGate never holds rent funds or sees bank details — those are
+entered on Stripe's hosted pages.
+
+**One-time platform setup (Stripe dashboard):**
+1. Turn on Connect (Connect → Get started) and complete the platform profile.
+2. Webhooks → add **two** endpoints pointing at `https://<your-app>/api/webhooks/stripe`:
+   - one for **Events on your account** → put its `whsec_...` in `STRIPE_WEBHOOK_SECRET`
+   - one for **Events on Connected accounts** → put its `whsec_...` in `STRIPE_CONNECT_WEBHOOK_SECRET`
+   Select `checkout.session.completed`, `checkout.session.async_payment_succeeded` and `account.updated`.
+3. Settings → Payment methods: enable the methods you want offered (card, ACH Direct Debit, ...).
+
+**Landlord:** Profile → *Get paid* → *Connect bank account* (Stripe's onboarding). Rent can't be paid
+online until Stripe marks the account ready.
+**Tenant:** Profile → *Payment methods for rent* → add/remove a card or bank account; *Pay rent*
+also offers to save the method used.
+
+## Rent setup and payment plans
+
+- **Rent setup:** Properties → a property → *Set up rent* on an occupied unit. Set the monthly rent, the
+  due day (1–28), and whether the app creates each month's charge automatically. Charges are created as
+  normal pending payments (this month + next, topped up daily), never backfilled into the past.
+- **Landlord-set plan:** Payments → *Payment Plans* → *Set a plan for a tenant* applies immediately with
+  no request needed (choose "Pay in full" to remove a plan).
+- **Tenant request:** Tenants use *Request a payment plan* on their Payments page; it needs the
+  landlord's approval first.
+- A split plan turns each month into 2 (every 14 days) or 4 (weekly) installments; changing a plan
+  rebuilds the upcoming unpaid auto-created charges.

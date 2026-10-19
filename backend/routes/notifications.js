@@ -1,5 +1,6 @@
 const express = require('express');
 const db = require('../db');
+const { unitLabel } = require('../lib/labels');
 const { requireAuth, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
@@ -55,7 +56,7 @@ router.get('/', (req, res) => {
 
   const highPriorityMaintenance = db
     .prepare(
-      `SELECT m.*, u.unit_number, p.name AS property_name
+      `SELECT m.*, u.unit_number, u.is_default AS unit_is_default, p.name AS property_name
        FROM maintenance_requests m
        JOIN units u ON u.id = m.unit_id
        JOIN properties p ON p.id = u.property_id
@@ -67,7 +68,7 @@ router.get('/', (req, res) => {
     items.push({
       id: `maint-${m.id}`,
       tone: 'red',
-      message: `High-priority maintenance — ${m.title} (${m.property_name} Unit ${m.unit_number})`,
+      message: `High-priority maintenance — ${m.title} — ${unitLabel(m.unit_number, m.property_name, m.unit_is_default)}`,
       link: '/maintenance',
       timestamp: m.created_at,
     });
@@ -75,7 +76,7 @@ router.get('/', (req, res) => {
 
   const recentMaintenance = db
     .prepare(
-      `SELECT m.*, u.unit_number, p.name AS property_name
+      `SELECT m.*, u.unit_number, u.is_default AS unit_is_default, p.name AS property_name
        FROM maintenance_requests m
        JOIN units u ON u.id = m.unit_id
        JOIN properties p ON p.id = u.property_id
@@ -87,9 +88,49 @@ router.get('/', (req, res) => {
     items.push({
       id: `maint-new-${m.id}`,
       tone: 'amber',
-      message: `New maintenance request — ${m.title} (${m.property_name} Unit ${m.unit_number})`,
+      message: `New maintenance request — ${m.title} — ${unitLabel(m.unit_number, m.property_name, m.unit_is_default)}`,
       link: '/maintenance',
       timestamp: m.created_at,
+    });
+  });
+
+  // Every other still-open maintenance request (older than the 3-day "new" window).
+  const olderOpenMaintenance = db
+    .prepare(
+      `SELECT m.*, u.unit_number, u.is_default AS unit_is_default, p.name AS property_name
+       FROM maintenance_requests m
+       JOIN units u ON u.id = m.unit_id
+       JOIN properties p ON p.id = u.property_id
+       WHERE p.owner_id = ? AND m.status != 'resolved' AND m.priority != 'high' AND m.created_at < datetime('now', '-3 days')
+       ORDER BY m.created_at DESC LIMIT 10`
+    )
+    .all(ownerId);
+  olderOpenMaintenance.forEach((m) => {
+    items.push({
+      id: `maint-open-${m.id}`,
+      tone: 'amber',
+      message: `Open maintenance request — ${m.title} — ${unitLabel(m.unit_number, m.property_name, m.unit_is_default)}`,
+      link: '/maintenance',
+      timestamp: m.created_at,
+    });
+  });
+
+  // Tenant payment-plan requests waiting for a decision.
+  const planRequests = db
+    .prepare(
+      `SELECT r.*, t.first_name, t.last_name
+       FROM payment_plan_requests r JOIN tenants t ON t.id = r.tenant_id
+       WHERE t.owner_id = ? AND r.status = 'pending' AND r.initiated_by = 'tenant'
+       ORDER BY r.created_at DESC LIMIT 10`
+    )
+    .all(ownerId);
+  planRequests.forEach((r) => {
+    items.push({
+      id: `plan-${r.id}`,
+      tone: 'amber',
+      message: `Payment plan request — ${r.first_name} ${r.last_name} is waiting for your decision`,
+      link: '/payment-plans',
+      timestamp: r.created_at,
     });
   });
 

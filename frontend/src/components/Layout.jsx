@@ -1,5 +1,6 @@
 import React from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import NavBar from './NavBar.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { LogoBadge, Wordmark } from './Logo.jsx';
 import NotificationBell from './NotificationBell.jsx';
@@ -7,17 +8,37 @@ import ProfileMenu from './ProfileMenu.jsx';
 
 const links = [
   { to: '/', label: 'Dashboard', end: true },
-  { to: '/performance', label: 'Performance' },
-  { to: '/properties', label: 'Properties' },
-  { to: '/tenants', label: 'Tenants' },
-  { to: '/screening', label: 'Screening' },
+  {
+    label: 'Properties',
+    children: [
+      { to: '/properties', label: 'Properties' },
+      { to: '/performance', label: 'Performance' },
+    ],
+  },
+  {
+    label: 'Tenants',
+    children: [
+      { to: '/tenants', label: 'Tenants' },
+      { to: '/screening', label: 'Screening' },
+    ],
+  },
   { to: '/listings', label: 'Listings' },
-  { to: '/payments', label: 'Payments' },
-  { to: '/payment-plans', label: 'Payment Plans' },
+  {
+    label: 'Payments',
+    children: [
+      { to: '/payments', label: 'Payments' },
+      { to: '/payment-plans', label: 'Payment Plans' },
+    ],
+  },
   { to: '/insurance', label: 'Rental insurance' },
   { to: '/maintenance', label: 'Maintenance' },
-  { to: '/documents', label: 'Documents' },
-  { to: '/leases', label: 'Leases' },
+  {
+    label: 'Documents',
+    children: [
+      { to: '/documents', label: 'Documents' },
+      { to: '/leases', label: 'Leases' },
+    ],
+  },
 ];
 
 export default function Layout({ children }) {
@@ -45,24 +66,7 @@ export default function Layout({ children }) {
               <ProfileMenu user={user} onLogout={handleLogout} />
             </div>
           </div>
-          <nav className="flex items-center gap-1 overflow-x-auto pb-3 -mx-1 px-1">
-            {links.map((l) => (
-              <NavLink
-                key={l.to}
-                to={l.to}
-                end={l.end}
-                className={({ isActive }) =>
-                  `shrink-0 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
-                    isActive
-                      ? 'bg-white/20 text-white shadow-sm backdrop-blur-sm'
-                      : 'text-white/75 hover:bg-white/10 hover:text-white'
-                  }`
-                }
-              >
-                {l.label}
-              </NavLink>
-            ))}
-          </nav>
+          <NavBar items={links} />
         </div>
       </header>
       <main className="flex-1 overflow-y-auto">

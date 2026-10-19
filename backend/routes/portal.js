@@ -12,6 +12,9 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { getStripe, friendlyStripeError } = require('../stripeClient');
 const { sendEmail, sendNotificationEmail } = require('../emailClient');
 const { getUploadsDir } = require('../lib/paths');
+const { ownerForPayment, createRentCheckout, getOrCreateCustomer } = require('../lib/connect');
+const { unitLabel } = require('../lib/labels');
+const { normalizeCategory, categoryLabel } = require('../lib/maintenanceCategories');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('tenant'));
@@ -54,7 +57,7 @@ router.get('/overview', (req, res) => {
   const placeholders = tenantIds.map(() => '?').join(',');
   const leases = db
     .prepare(
-      `SELECT l.*, u.unit_number, u.bedrooms, u.bathrooms, p.name AS property_name, p.address_line1, p.address_line2,
+      `SELECT l.*, u.unit_number, u.is_default AS unit_is_default, u.bedrooms, u.bathrooms, p.name AS property_name, p.address_line1, p.address_line2,
               p.city, p.state, p.zip, owner.name AS landlord_name, owner.email AS landlord_email, owner.zelle_contact,
               t.active_installment_plan, t.active_installment_plan_until
        FROM leases l
@@ -66,7 +69,10 @@ router.get('/overview', (req, res) => {
        ORDER BY (l.status = 'active') DESC, l.start_date DESC`
     )
     .all(...tenantIds);
-  res.json({ linked: true, leases });
+  res.json({
+    linked: true,
+    leases: leases.map((l) => ({ ...l, unit_label: unitLabel(l.unit_number, l.property_name, l.unit_is_default) })),
+  });
 });
 
 router.get('/payments', (req, res) => {
@@ -108,30 +114,139 @@ router.post('/payments/:id/checkout', async (req, res, next) => {
   if (payment.status === 'paid') return res.status(400).json({ error: 'This payment is already marked paid' });
 
   try {
-    const stripe = getStripe();
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      payment_method_types: ['card'],
-      line_items: [
-        {
-          price_data: {
-            currency: 'usd',
-            unit_amount: Math.round(Number(payment.amount) * 100),
-            product_data: {
-              name: `Rent — ${payment.property_name}, Unit ${payment.unit_number}`,
-              description: `${payment.first_name} ${payment.last_name} · due ${payment.due_date}`,
-            },
-          },
-          quantity: 1,
-        },
-      ],
-      metadata: { payment_id: String(payment.id) },
-      success_url: `${APP_URL}/pay/success?payment_id=${payment.id}`,
-      cancel_url: `${APP_URL}/pay/cancel?payment_id=${payment.id}`,
-    });
-
-    db.prepare('UPDATE payments SET stripe_session_id = ? WHERE id = ?').run(session.id, payment.id);
+    // Rent is paid straight to the landlord's connected account. The checkout
+    // is tied to this tenant's Stripe Customer so saved methods show up.
+    const owner = ownerForPayment(payment.id);
+    const tenantUser = db.prepare('SELECT id, name, email FROM users WHERE id = ?').get(req.user.id);
+    const session = await createRentCheckout({ payment, owner, tenantUser });
     res.status(201).json({ url: session.url });
+  } catch (err) {
+    const friendly = friendlyStripeError(err);
+    if (friendly.statusCode) return res.status(friendly.statusCode).json({ error: friendly.message });
+    next(friendly);
+  }
+});
+
+// ---- Saved payment methods (cards / bank accounts used to pay rent) ----
+// Methods are stored by Stripe on the landlord's connected account (where the
+// rent is charged), so a tenant sees them grouped per landlord. Card and bank
+// details are entered on Stripe's hosted page — never on this server.
+
+function connectedLandlordsForTenant(userId) {
+  return db
+    .prepare(
+      `SELECT DISTINCT owner.id AS owner_id, owner.name AS landlord_name,
+              owner.stripe_account_id, owner.stripe_charges_enabled
+       FROM tenants t
+       JOIN leases l ON l.tenant_id = t.id
+       JOIN units u ON u.id = l.unit_id
+       JOIN properties p ON p.id = u.property_id
+       JOIN users owner ON owner.id = p.owner_id
+       WHERE t.user_id = ?`
+    )
+    .all(userId);
+}
+
+function describePaymentMethod(pm) {
+  if (pm.type === 'card' && pm.card) {
+    const brand = pm.card.brand ? pm.card.brand[0].toUpperCase() + pm.card.brand.slice(1) : 'Card';
+    return {
+      id: pm.id,
+      type: 'card',
+      label: `${brand} •••• ${pm.card.last4}`,
+      detail: `Expires ${String(pm.card.exp_month).padStart(2, '0')}/${String(pm.card.exp_year).slice(-2)}`,
+    };
+  }
+  if (pm.type === 'us_bank_account' && pm.us_bank_account) {
+    return {
+      id: pm.id,
+      type: 'bank',
+      label: `${pm.us_bank_account.bank_name || 'Bank account'} •••• ${pm.us_bank_account.last4}`,
+      detail: pm.us_bank_account.account_type ? `${pm.us_bank_account.account_type} account` : 'Bank account',
+    };
+  }
+  return { id: pm.id, type: pm.type, label: pm.type, detail: '' };
+}
+
+router.get('/payment-methods', async (req, res, next) => {
+  const landlords = connectedLandlordsForTenant(req.user.id);
+  const ready = landlords.filter((l) => l.stripe_account_id && l.stripe_charges_enabled);
+  const waiting = landlords.filter((l) => !(l.stripe_account_id && l.stripe_charges_enabled)).map((l) => l.landlord_name);
+
+  try {
+    const result = [];
+    if (ready.length > 0) {
+      const stripe = getStripe();
+      for (const l of ready) {
+        const row = db
+          .prepare('SELECT stripe_customer_id FROM stripe_customers WHERE user_id = ? AND stripe_account_id = ?')
+          .get(req.user.id, l.stripe_account_id);
+        let methods = [];
+        if (row) {
+          const list = await stripe.paymentMethods.list(
+            { customer: row.stripe_customer_id, limit: 20 },
+            { stripeAccount: l.stripe_account_id }
+          );
+          methods = list.data.map(describePaymentMethod);
+        }
+        result.push({ account_id: l.stripe_account_id, landlord_name: l.landlord_name, methods });
+      }
+    }
+    res.json({ landlords: result, waiting_on_landlord: waiting });
+  } catch (err) {
+    const friendly = friendlyStripeError(err);
+    if (friendly.statusCode) return res.status(friendly.statusCode).json({ error: friendly.message });
+    next(friendly);
+  }
+});
+
+// Starts Stripe's hosted "save a payment method" page (setup mode — no charge).
+router.post('/payment-methods/setup', async (req, res, next) => {
+  const { account_id } = req.body || {};
+  const landlord = connectedLandlordsForTenant(req.user.id).find(
+    (l) => l.stripe_account_id === account_id && l.stripe_charges_enabled
+  );
+  if (!landlord) return res.status(404).json({ error: "That landlord isn't set up to accept online payments yet" });
+
+  try {
+    const stripe = getStripe();
+    const tenantUser = db.prepare('SELECT id, name, email FROM users WHERE id = ?').get(req.user.id);
+    const customerId = await getOrCreateCustomer(stripe, tenantUser, landlord.stripe_account_id);
+    const session = await stripe.checkout.sessions.create(
+      {
+        mode: 'setup',
+        currency: 'usd',
+        customer: customerId,
+        success_url: `${APP_URL}/profile?pm=added`,
+        cancel_url: `${APP_URL}/profile?pm=cancelled`,
+      },
+      { stripeAccount: landlord.stripe_account_id }
+    );
+    res.status(201).json({ url: session.url });
+  } catch (err) {
+    const friendly = friendlyStripeError(err);
+    if (friendly.statusCode) return res.status(friendly.statusCode).json({ error: friendly.message });
+    next(friendly);
+  }
+});
+
+router.delete('/payment-methods/:id', async (req, res, next) => {
+  const accountId = req.query.account_id;
+  const landlord = connectedLandlordsForTenant(req.user.id).find((l) => l.stripe_account_id === accountId);
+  const row =
+    landlord &&
+    db
+      .prepare('SELECT stripe_customer_id FROM stripe_customers WHERE user_id = ? AND stripe_account_id = ?')
+      .get(req.user.id, accountId);
+  if (!row) return res.status(404).json({ error: 'Payment method not found' });
+
+  try {
+    const stripe = getStripe();
+    const pm = await stripe.paymentMethods.retrieve(req.params.id, { stripeAccount: accountId });
+    // Only ever detach a method that belongs to THIS tenant's customer.
+    if (pm.customer !== row.stripe_customer_id) return res.status(404).json({ error: 'Payment method not found' });
+    await stripe.paymentMethods.detach(req.params.id, { stripeAccount: accountId });
+    res.status(204).end();
   } catch (err) {
     const friendly = friendlyStripeError(err);
     if (friendly.statusCode) return res.status(friendly.statusCode).json({ error: friendly.message });
@@ -145,7 +260,7 @@ router.get('/maintenance', (req, res) => {
   const placeholders = tenantIds.map(() => '?').join(',');
   const rows = db
     .prepare(
-      `SELECT m.*, u.unit_number, p.name AS property_name
+      `SELECT m.*, u.unit_number, u.is_default AS unit_is_default, p.name AS property_name
        FROM maintenance_requests m
        JOIN units u ON u.id = m.unit_id
        JOIN properties p ON p.id = u.property_id
@@ -153,12 +268,14 @@ router.get('/maintenance', (req, res) => {
        ORDER BY m.created_at DESC`
     )
     .all(...tenantIds);
-  res.json(rows);
+  res.json(rows.map((r) => ({ ...r, unit_label: unitLabel(r.unit_number, r.property_name, r.unit_is_default) })));
 });
 
 router.post('/maintenance', (req, res) => {
-  const { unit_id, title, description, priority } = req.body;
+  const { unit_id, title, description, priority, category } = req.body;
   if (!unit_id || !title) return res.status(400).json({ error: 'unit_id and title are required' });
+  const cat = normalizeCategory(category);
+  if (!cat.ok) return res.status(400).json({ error: 'Unknown maintenance category' });
 
   const tenantIds = linkedTenantIds(req.user.id);
   if (tenantIds.length === 0) return res.status(403).json({ error: 'No lease on file for your account' });
@@ -170,16 +287,16 @@ router.post('/maintenance', (req, res) => {
 
   const info = db
     .prepare(
-      `INSERT INTO maintenance_requests (unit_id, tenant_id, title, description, priority, status)
-       VALUES (?, ?, ?, ?, ?, 'open')`
+      `INSERT INTO maintenance_requests (unit_id, tenant_id, title, description, priority, status, category)
+       VALUES (?, ?, ?, ?, ?, 'open', ?)`
     )
-    .run(unit_id, lease.tenant_id, title, description || null, priority || 'normal');
+    .run(unit_id, lease.tenant_id, title, description || null, priority || 'normal', cat.value);
   const created = db.prepare('SELECT * FROM maintenance_requests WHERE id = ?').get(info.lastInsertRowid);
   res.status(201).json(created);
 
   const owner = db
     .prepare(
-      `SELECT owner.id, owner.email, owner.name, u.unit_number, p.name AS property_name
+      `SELECT owner.id, owner.email, owner.name, u.unit_number, u.is_default AS unit_is_default, p.name AS property_name
        FROM units u JOIN properties p ON p.id = u.property_id JOIN users owner ON owner.id = p.owner_id
        WHERE u.id = ?`
     )
@@ -188,10 +305,10 @@ router.post('/maintenance', (req, res) => {
     sendNotificationEmail({
       userId: owner.id,
       to: owner.email,
-      subject: `New maintenance request from your tenant — ${owner.property_name} Unit ${owner.unit_number}`,
+      subject: `New maintenance request from your tenant — ${unitLabel(owner.unit_number, owner.property_name, owner.unit_is_default)}`,
       html: `<p>Hi ${owner.name || ''},</p>
-        <p>Your tenant submitted a new maintenance request for <strong>${owner.property_name} Unit ${owner.unit_number}</strong>:</p>
-        <p><strong>${title}</strong> (${priority || 'normal'} priority)${description ? `<br>${description}` : ''}</p>
+        <p>Your tenant submitted a new maintenance request for <strong>${unitLabel(owner.unit_number, owner.property_name, owner.unit_is_default)}</strong>:</p>
+        <p><strong>${title}</strong>${cat.value ? ` [${categoryLabel(cat.value)}]` : ''} (${priority || 'normal'} priority)${description ? `<br>${description}` : ''}</p>
         <p>Log in to IronGate Housing to view details.</p>`,
     }).catch(() => {});
   }
@@ -342,7 +459,7 @@ router.get('/notifications', (req, res) => {
 
     const resolvedMaintenance = db
       .prepare(
-        `SELECT m.*, u.unit_number, p.name AS property_name
+        `SELECT m.*, u.unit_number, u.is_default AS unit_is_default, p.name AS property_name
          FROM maintenance_requests m
          JOIN units u ON u.id = m.unit_id
          JOIN properties p ON p.id = u.property_id
@@ -355,7 +472,7 @@ router.get('/notifications', (req, res) => {
       items.push({
         id: `t-maint-${m.id}`,
         tone: 'green',
-        message: `Maintenance resolved — ${m.title} (${m.property_name} Unit ${m.unit_number})`,
+        message: `Maintenance resolved — ${m.title} — ${unitLabel(m.unit_number, m.property_name, m.unit_is_default)}`,
         link: '/maintenance',
         timestamp: m.resolved_at,
       });
