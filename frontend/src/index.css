@@ -21,3 +21,23 @@ body {
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* Login / sign-up "bubble": the form content was designed for a white card, so
+   flip its text to light colors on the dark blue-purple bubble. Inputs stay white. */
+.auth-bubble h1,
+.auth-bubble label {
+  color: #ffffff;
+}
+.auth-bubble p,
+.auth-bubble span {
+  color: rgba(255, 255, 255, 0.78);
+}
+.auth-bubble a {
+  color: #c7d2fe;
+}
+.auth-bubble p.text-rose-600 {
+  color: #fecdd3;
+}
+.auth-bubble button.underline {
+  color: rgba(255, 255, 255, 0.7);
+}

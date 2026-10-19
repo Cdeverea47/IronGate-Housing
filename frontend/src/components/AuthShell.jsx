@@ -39,9 +39,27 @@ export function AuthShell({ children, wide = false }) {
       </div>
 
       <div
-        className={`relative z-10 w-full ${wide ? 'max-w-md' : 'max-w-sm'} rounded-2xl border border-white/30 bg-white shadow-soft p-8 text-slate-900`}
+        className={`auth-bubble relative z-10 w-full ${wide ? 'max-w-md' : 'max-w-sm'} overflow-hidden rounded-[2.75rem] border border-white/25 p-10 text-white`}
+        style={{
+          background: 'linear-gradient(145deg, #1b3fae 0%, #3b2fa8 52%, #4c1d95 100%)',
+          boxShadow:
+            '0 25px 60px -12px rgba(30, 20, 90, 0.65), inset 0 2px 8px rgba(255,255,255,0.28), inset 0 -14px 30px rgba(20, 10, 70, 0.45)',
+        }}
       >
+        {/* Glossy bubble highlights */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-10 left-6 h-28 w-2/3 rounded-full"
+          style={{ background: 'radial-gradient(ellipse at center, rgba(255,255,255,0.28), rgba(255,255,255,0) 70%)', transform: 'rotate(-12deg)' }}
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -bottom-12 right-4 h-24 w-1/2 rounded-full"
+          style={{ background: 'radial-gradient(ellipse at center, rgba(167,139,250,0.35), rgba(167,139,250,0) 70%)' }}
+        />
+        <div className="relative">
         {children}
+        </div>
       </div>
 
       <div className="relative z-10 mt-6 text-sm text-white/70">© {new Date().getFullYear()} IronGate Housing</div>
@@ -65,10 +83,10 @@ export function RoleChooser({ title, subtitle, onChoose }) {
             key={o.value}
             type="button"
             onClick={() => onChoose(o.value)}
-            className="w-full text-left rounded-xl border border-slate-200 px-4 py-3.5 hover:border-brand-700 hover:bg-slate-50 transition-colors"
+            className="w-full text-left rounded-2xl border border-white/25 bg-white/10 px-4 py-3.5 hover:bg-white/20 hover:border-white/50 transition-colors"
           >
-            <div className="font-semibold text-slate-900">I'm a {o.label.toLowerCase()}</div>
-            <div className="text-xs text-slate-500 mt-0.5">{o.hint}</div>
+            <div className="font-semibold text-white">I'm a {o.label.toLowerCase()}</div>
+            <div className="text-xs text-white/70 mt-0.5">{o.hint}</div>
           </button>
         ))}
       </div>
