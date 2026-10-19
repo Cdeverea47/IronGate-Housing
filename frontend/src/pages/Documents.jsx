@@ -98,7 +98,7 @@ export default function Documents() {
           <div>
             <Label>Category</Label>
             <Select value={category} onChange={(e) => setCategory(e.target.value)}>
-              <option value="lease_agreement">Lease agreement</option>
+              <option value="lease_agreement">Digital lease (lease agreement)</option>
               <option value="receipt">Receipt</option>
               <option value="inspection">Inspection report</option>
               <option value="insurance_policy">Insurance policy</option>

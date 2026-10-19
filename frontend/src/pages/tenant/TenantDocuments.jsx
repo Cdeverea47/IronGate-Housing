@@ -6,7 +6,7 @@ const categoryLabels = {
   renters_insurance: "Renter's insurance",
   id: 'ID / verification',
   receipt: 'Receipt',
-  lease_agreement: 'Lease agreement',
+  lease_agreement: 'Digital lease',
   inspection: 'Inspection report',
   insurance_policy: 'Insurance policy',
   listing_photo: 'Listing photo',
@@ -32,7 +32,8 @@ export default function TenantDocuments() {
   useEffect(load, []);
 
   // Renter's insurance now lives on its own page (Payments → Rental insurance).
-  const otherDocs = documents.filter((d) => d.category !== 'renters_insurance');
+  const leaseDocs = documents.filter((d) => d.category === 'lease_agreement');
+  const otherDocs = documents.filter((d) => d.category !== 'renters_insurance' && d.category !== 'lease_agreement');
 
   async function handleUpload(e) {
     e.preventDefault();
@@ -68,8 +69,59 @@ export default function TenantDocuments() {
           <h1 className="text-2xl font-semibold text-white">Documents</h1>
           <p className="text-white/60 text-sm mt-1">Files shared with you, plus anything you'd like to share back</p>
         </div>
-        <Button onClick={() => setModalOpen(true)}>+ Upload document</Button>
+        <div className="flex gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setCategory('lease_agreement');
+              setModalOpen(true);
+            }}
+          >
+            + Upload digital lease
+          </Button>
+          <Button
+            onClick={() => {
+              setCategory('other');
+              setModalOpen(true);
+            }}
+          >
+            + Upload document
+          </Button>
+        </div>
       </div>
+
+      <div>
+        <h2 className="text-lg font-medium text-white mb-3">Digital lease</h2>
+        {loading ? null : leaseDocs.length === 0 ? (
+          <EmptyState message="No digital lease on file yet. Upload your signed lease, or your landlord can share it here." />
+        ) : (
+          <Card className="divide-y divide-white/10">
+            {leaseDocs.map((d) => (
+              <div key={d.id} className="p-4 flex items-center justify-between">
+                <div>
+                  <div className="font-medium text-white">{d.original_name}</div>
+                  <div className="text-sm text-white/60">
+                    {d.uploaded_by_role === 'tenant' ? 'Uploaded by you' : 'Shared by your landlord'} ·{' '}
+                    {new Date(d.uploaded_at).toLocaleDateString()}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <a href={api.portalDownloadUrl(d.id)} className="text-white/90 hover:text-white text-sm font-medium underline">
+                    Download
+                  </a>
+                  {d.uploaded_by_role === 'tenant' ? (
+                    <button onClick={() => handleDelete(d)} className="text-rose-200 hover:text-rose-100 text-sm font-medium">
+                      Delete
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </Card>
+        )}
+      </div>
+
+      <h2 className="text-lg font-medium text-white -mb-3">Other documents</h2>
 
       {loading ? (
         <p className="text-white/60">Loading…</p>
@@ -118,6 +170,7 @@ export default function TenantDocuments() {
           <div>
             <Label>Category</Label>
             <Select value={category} onChange={(e) => setCategory(e.target.value)}>
+              <option value="lease_agreement">Digital lease</option>
               <option value="id">ID / verification</option>
               <option value="receipt">Receipt</option>
               <option value="other">Other</option>
