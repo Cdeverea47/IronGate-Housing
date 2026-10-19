@@ -68,14 +68,15 @@ router.get('/', (req, res) => {
 
 router.post('/', (req, res) => {
   const { lease_id, amount, due_date, paid_date, method, status, notes } = req.body;
-  if (!lease_id || !amount || !due_date) return res.status(400).json({ error: 'lease_id, amount and due_date are required' });
+  if (!lease_id || !amount || !due_date) return res.status(400).json({ error: 'lease_id and due_date and amount are required' });
   if (!ownsLease(lease_id, req.user.id)) return res.status(404).json({ error: 'Lease not found' });
+  const finalStatus = status || (paid_date ? 'paid' : 'pending');
   const info = db
     .prepare(
-      `INSERT INTO payments (lease_id, amount, due_date, paid_date, method, status, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO payments (lease_id, amount, amount_paid, due_date, paid_date, method, status, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(lease_id, amount, due_date, paid_date || null, method || null, status || (paid_date ? 'paid' : 'pending'), notes || null);
+    .run(lease_id, amount, finalStatus === 'paid' ? amount : 0, due_date, paid_date || null, method || null, finalStatus, notes || null);
   res.status(201).json(db.prepare('SELECT * FROM payments WHERE id = ?').get(info.lastInsertRowid));
 });
 
@@ -142,19 +143,35 @@ router.post('/schedule', (req, res) => {
 router.put('/:id', (req, res) => {
   const existing = ownsPayment(req.params.id, req.user.id);
   if (!existing) return res.status(404).json({ error: 'Payment not found' });
-  const { amount, due_date, paid_date, method, status, notes } = req.body;
-  const becamePaid = existing.status !== 'paid' && (status ?? existing.status) === 'paid';
+  const { amount, due_date, paid_date, method, status, notes, amount_paid } = req.body;
+  const newAmount = Number(amount ?? existing.amount);
+  const today = new Date().toISOString().slice(0, 10);
+
+  // How much has actually been paid. An explicit amount_paid (partial or full)
+  // wins; otherwise a status change implies all-or-nothing.
+  let paidSoFar = Number(existing.amount_paid || 0);
+  if (amount_paid !== undefined && amount_paid !== null && amount_paid !== '') {
+    paidSoFar = Number(amount_paid);
+    if (!(paidSoFar >= 0)) return res.status(400).json({ error: 'amount_paid must be 0 or more' });
+  } else if (status === 'paid') {
+    paidSoFar = newAmount;
+  } else if (status === 'pending' && existing.status === 'paid') {
+    paidSoFar = 0;
+  }
+  paidSoFar = Math.min(paidSoFar, newAmount);
+  const fullyPaid = paidSoFar >= newAmount && newAmount > 0;
+  const newStatus = fullyPaid ? 'paid' : status === 'paid' ? 'pending' : status ?? (existing.status === 'paid' ? 'pending' : existing.status);
+  const becamePaid = existing.status !== 'paid' && newStatus === 'paid';
+  let newPaidDate = paid_date ?? existing.paid_date;
+  let newMethod = method ?? existing.method;
+  if (paidSoFar > 0) newPaidDate = newPaidDate || today;
+  else {
+    newPaidDate = null;
+    newMethod = null;
+  }
   db.prepare(
-    `UPDATE payments SET amount = ?, due_date = ?, paid_date = ?, method = ?, status = ?, notes = ? WHERE id = ?`
-  ).run(
-    amount ?? existing.amount,
-    due_date ?? existing.due_date,
-    paid_date ?? existing.paid_date,
-    method ?? existing.method,
-    status ?? existing.status,
-    notes ?? existing.notes,
-    req.params.id
-  );
+    `UPDATE payments SET amount = ?, amount_paid = ?, due_date = ?, paid_date = ?, method = ?, status = ?, notes = ? WHERE id = ?`
+  ).run(newAmount, paidSoFar, due_date ?? existing.due_date, newPaidDate, newMethod, newStatus, notes ?? existing.notes, req.params.id);
   const updated = db.prepare('SELECT * FROM payments WHERE id = ?').get(req.params.id);
   res.json(updated);
 
@@ -174,6 +191,16 @@ router.put('/:id', (req, res) => {
       }).catch(() => {});
     }
   }
+});
+
+// Undo a payment marked by mistake (wrong month, wrong amount): resets it to unpaid.
+router.post('/:id/unpay', (req, res) => {
+  const existing = ownsPayment(req.params.id, req.user.id);
+  if (!existing) return res.status(404).json({ error: 'Payment not found' });
+  db.prepare(
+    "UPDATE payments SET status = 'pending', amount_paid = 0, paid_date = NULL, method = NULL, stripe_payment_intent_id = NULL WHERE id = ?"
+  ).run(req.params.id);
+  res.json(db.prepare('SELECT * FROM payments WHERE id = ?').get(req.params.id));
 });
 
 router.delete('/:id', (req, res) => {

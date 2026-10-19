@@ -48,6 +48,9 @@ function PaymentGroup({ title, subtitle, tone, rows, onPay, loadingId }) {
               </div>
               <div className="text-sm text-white/60">
                 ${Number(p.amount).toFixed(2)} due {p.due_date}
+                {Number(p.amount_paid) > 0 && p.status !== 'paid'
+                  ? ` · $${Number(p.amount_paid).toFixed(2)} paid, $${(Number(p.amount) - Number(p.amount_paid)).toFixed(2)} left`
+                  : ''}
                 {p.status !== 'paid' ? ` · ${dueLabel(p.due_date)}` : ''}
                 {p.paid_date ? ` · paid ${p.paid_date}${p.method ? ` via ${methodLabels[p.method] || p.method}` : ''}` : ''}
               </div>

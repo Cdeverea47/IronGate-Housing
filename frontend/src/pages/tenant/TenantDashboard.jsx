@@ -132,15 +132,17 @@ export default function TenantDashboard() {
   const todayStr = ymd(now);
   const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
   const nextKey = ym(next);
-  const isPaid = (p) => p.status === 'paid';
+  const paidOf = (p) => (p.status === 'paid' ? Number(p.amount) : Math.min(Number(p.amount_paid || 0), Number(p.amount)));
+  const owedOf = (p) => Number(p.amount) - paidOf(p);
+  const isPaid = (p) => owedOf(p) <= 0;
   const thisMonth = payments.filter((p) => p.due_date.startsWith(monthKey));
   const monthDue = thisMonth.reduce((t, p) => t + Number(p.amount), 0);
-  const monthPaid = thisMonth.filter(isPaid).reduce((t, p) => t + Number(p.amount), 0);
+  const monthPaid = thisMonth.reduce((t, p) => t + paidOf(p), 0);
   const monthLeft = monthDue - monthPaid;
   // Unpaid from earlier months rolls into this month's total.
   const carryOver = payments
     .filter((p) => !isPaid(p) && p.due_date < monthStart)
-    .reduce((t, p) => t + Number(p.amount), 0);
+    .reduce((t, p) => t + owedOf(p), 0);
   const totalDue = monthLeft + carryOver;
   const nextMonthRent = payments.filter((p) => p.due_date.startsWith(nextKey)).reduce((t, p) => t + Number(p.amount), 0);
   const upcomingPayments = payments
@@ -226,7 +228,7 @@ export default function TenantDashboard() {
                         <div className="text-sm font-medium text-white">{p.notes || 'Rent'}</div>
                         <div className="text-xs text-white/60">Due {p.due_date}</div>
                       </div>
-                      <div className="text-sm font-semibold text-white tabular-nums">{money(p.amount)}</div>
+                      <div className="text-sm font-semibold text-white tabular-nums">{money(owedOf(p))}</div>
                     </li>
                   ))}
                 </ul>

@@ -60,7 +60,7 @@ function markRentPaid(session, connectedAccountId) {
   const result = db
     .prepare(
       `UPDATE payments
-       SET status = 'paid', paid_date = date('now'), method = 'card', stripe_payment_intent_id = ?
+       SET status = 'paid', amount_paid = amount, paid_date = date('now'), method = 'card', stripe_payment_intent_id = ?
        WHERE id = ? AND status != 'paid'`
     )
     .run(paymentIntentId, paymentId);

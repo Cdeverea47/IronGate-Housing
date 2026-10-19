@@ -256,6 +256,9 @@ ensureColumn('users', 'bank_account_last4', 'TEXT');
 // What kind of problem a maintenance request is (plumbing, electrical, ...) — see lib/maintenanceCategories.js.
 ensureColumn('maintenance_requests', 'category', 'TEXT');
 ensureColumn('units', 'is_default', 'INTEGER NOT NULL DEFAULT 0');
+// How much of a charge has actually been paid (supports partial payments).
+ensureColumn('payments', 'amount_paid', 'REAL NOT NULL DEFAULT 0');
+db.exec("UPDATE payments SET amount_paid = amount WHERE status = 'paid' AND amount_paid < amount");
 ensureColumn('leases', 'rent_due_day', 'INTEGER');
 ensureColumn('leases', 'rent_autogenerate', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('payments', 'auto_generated', 'INTEGER NOT NULL DEFAULT 0');

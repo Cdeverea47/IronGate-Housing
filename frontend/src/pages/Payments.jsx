@@ -37,7 +37,7 @@ export default function Payments() {
   const [linkModal, setLinkModal] = useState({ open: false, url: '', copied: false });
   const [linkError, setLinkError] = useState(null);
   const [linkLoadingId, setLinkLoadingId] = useState(null);
-  const [markPaidModal, setMarkPaidModal] = useState({ open: false, payment: null, method: 'cash' });
+  const [markPaidModal, setMarkPaidModal] = useState({ open: false, payment: null, method: 'cash', amount: '', date: '' });
   const [zelleContact, setZelleContact] = useState('');
   const [zelleSaving, setZelleSaving] = useState(false);
   const [zelleSaved, setZelleSaved] = useState(false);
@@ -112,14 +112,44 @@ export default function Payments() {
 
   async function confirmMarkPaid(e) {
     e.preventDefault();
-    const { payment, method } = markPaidModal;
-    await api.put(`/payments/${payment.id}`, {
-      status: 'paid',
-      paid_date: new Date().toISOString().slice(0, 10),
-      method,
-    });
-    setMarkPaidModal({ open: false, payment: null, method: 'cash' });
+    const { payment, method, amount, date } = markPaidModal;
+    const received = Number(amount);
+    if (!(received > 0)) return;
+    const already = Number(payment.amount_paid || 0);
+    try {
+      await api.put(`/payments/${payment.id}`, {
+        amount_paid: Math.min(Number(payment.amount), already + received),
+        paid_date: date || new Date().toISOString().slice(0, 10),
+        method,
+      });
+    } catch (err) {
+      alert(err.message);
+    }
+    setMarkPaidModal({ open: false, payment: null, method: 'cash', amount: '', date: '' });
     load();
+  }
+
+  function openRecordPayment(p) {
+    const remaining = Number(p.amount) - Number(p.amount_paid || 0);
+    setMarkPaidModal({
+      open: true,
+      payment: p,
+      method: 'cash',
+      amount: remaining.toFixed(2),
+      date: new Date().toISOString().slice(0, 10),
+    });
+  }
+
+  // Undo a payment that was marked by mistake (wrong month / wrong amount).
+  async function unpay(p) {
+    const paid = Number(p.amount_paid || 0);
+    if (!confirm(`Undo the $${paid.toFixed(2)} recorded for the payment due ${p.due_date}? It goes back to unpaid.`)) return;
+    try {
+      await api.post(`/payments/${p.id}/unpay`, {});
+      load();
+    } catch (err) {
+      alert(err.message);
+    }
   }
 
   async function saveZelleContact(e) {
@@ -213,12 +243,22 @@ export default function Payments() {
                 </div>
                 <div className="text-sm text-white/60">
                   {p.notes ? `${p.notes} · ` : ''}${p.amount} due {p.due_date}
+                  {Number(p.amount_paid) > 0 && p.status !== 'paid'
+                    ? ` · $${Number(p.amount_paid).toFixed(2)} paid, $${(Number(p.amount) - Number(p.amount_paid)).toFixed(2)} left`
+                    : ''}
                   {p.status !== 'paid' && p.due_date > new Date().toISOString().slice(0, 10) ? ' · upcoming' : ''}
                   {p.paid_date ? ` · paid ${p.paid_date}${p.method ? ` via ${methodLabels[p.method] || p.method}` : ''}` : ''}
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <Badge tone={statusTone(p.status, p.due_date)}>{p.status}</Badge>
+                <Badge tone={Number(p.amount_paid) > 0 && p.status !== 'paid' ? 'amber' : statusTone(p.status, p.due_date)}>
+                  {Number(p.amount_paid) > 0 && p.status !== 'paid' ? 'partial' : p.status}
+                </Badge>
+                {Number(p.amount_paid) > 0 ? (
+                  <button type="button" onClick={() => unpay(p)} className="text-xs text-amber-200 hover:text-amber-100 underline">
+                    Unpay
+                  </button>
+                ) : null}
                 {p.status !== 'paid' && (
                   <>
                     <Button
@@ -230,9 +270,9 @@ export default function Payments() {
                     </Button>
                     <Button
                       variant="secondary"
-                      onClick={() => setMarkPaidModal({ open: true, payment: p, method: 'cash' })}
+                      onClick={() => openRecordPayment(p)}
                     >
-                      Mark paid manually
+                      Record payment
                     </Button>
                     <button
                       type="button"
@@ -362,14 +402,36 @@ export default function Payments() {
 
       <Modal
         open={markPaidModal.open}
-        onClose={() => setMarkPaidModal({ open: false, payment: null, method: 'cash' })}
-        title="Mark payment paid"
+        onClose={() => setMarkPaidModal({ open: false, payment: null, method: 'cash', amount: '', date: '' })}
+        title="Record payment"
       >
         <form onSubmit={confirmMarkPaid} className="space-y-3">
           <p className="text-sm text-white/70">
-            Marking {markPaidModal.payment ? `$${markPaidModal.payment.amount}` : 'this payment'} as paid today. How
-            was it paid?
+            {markPaidModal.payment
+              ? `$${markPaidModal.payment.amount} due ${markPaidModal.payment.due_date}. Enter how much the tenant actually paid — a smaller amount is saved as a partial payment.`
+              : ''}
           </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Amount received ($)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0.01"
+                value={markPaidModal.amount}
+                onChange={(e) => setMarkPaidModal((m) => ({ ...m, amount: e.target.value }))}
+                required
+              />
+            </div>
+            <div>
+              <Label>Date received</Label>
+              <Input
+                type="date"
+                value={markPaidModal.date}
+                onChange={(e) => setMarkPaidModal((m) => ({ ...m, date: e.target.value }))}
+              />
+            </div>
+          </div>
           <div>
             <Label>Method</Label>
             <Select
@@ -384,7 +446,7 @@ export default function Payments() {
             </Select>
           </div>
           <Button type="submit" className="w-full">
-            Confirm paid
+            Save payment
           </Button>
         </form>
       </Modal>

@@ -92,7 +92,7 @@ async function createRentCheckout({ payment, owner, tenantUser }) {
       {
         price_data: {
           currency: 'usd',
-          unit_amount: Math.round(Number(payment.amount) * 100),
+          unit_amount: Math.round((Number(payment.amount) - Number(payment.amount_paid || 0)) * 100), // remaining balance
           product_data: {
             name: `Rent — ${payment.property_name}, Unit ${payment.unit_number}`,
             description: `${payment.first_name} ${payment.last_name} · due ${payment.due_date}`,

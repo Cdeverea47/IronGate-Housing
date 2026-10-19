@@ -40,16 +40,16 @@ router.get('/summary', (req, res) => {
     .get(ownerId).c;
   const monthToDateCollected = db
     .prepare(
-      `SELECT COALESCE(SUM(pay.amount), 0) total FROM payments pay
+      `SELECT COALESCE(SUM(pay.amount_paid), 0) total FROM payments pay
        JOIN leases l ON l.id = pay.lease_id JOIN units u ON u.id = l.unit_id JOIN properties p ON p.id = u.property_id
-       WHERE p.owner_id = ? AND pay.status = 'paid' AND strftime('%Y-%m', pay.paid_date) = strftime('%Y-%m', 'now')`
+       WHERE p.owner_id = ? AND pay.amount_paid > 0 AND strftime('%Y-%m', pay.paid_date) = strftime('%Y-%m', 'now')`
     )
     .get(ownerId).total;
   const monthRent = db
     .prepare(
       `SELECT
         COALESCE(SUM(pay.amount), 0) AS due,
-        COALESCE(SUM(CASE WHEN pay.status = 'paid' THEN pay.amount ELSE 0 END), 0) AS collected
+        COALESCE(SUM(pay.amount_paid), 0) AS collected
        FROM payments pay
        JOIN leases l ON l.id = pay.lease_id JOIN units u ON u.id = l.unit_id JOIN properties p ON p.id = u.property_id
        WHERE p.owner_id = ? AND strftime('%Y-%m', pay.due_date) = strftime('%Y-%m', 'now')`
