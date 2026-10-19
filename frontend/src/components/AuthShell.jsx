@@ -41,9 +41,9 @@ export function AuthShell({ children, wide = false }) {
       <div
         className={`auth-bubble relative z-10 w-full ${wide ? 'max-w-md' : 'max-w-sm'} overflow-hidden rounded-[2.75rem] border border-white/25 p-10 text-white`}
         style={{
-          background: 'linear-gradient(145deg, #1b3fae 0%, #3b2fa8 52%, #4c1d95 100%)',
+          background: 'linear-gradient(145deg, #1f45bd 0%, #1034a6 50%, #0b2580 100%)',
           boxShadow:
-            '0 25px 60px -12px rgba(30, 20, 90, 0.65), inset 0 2px 8px rgba(255,255,255,0.28), inset 0 -14px 30px rgba(20, 10, 70, 0.45)',
+            '0 25px 60px -12px rgba(8, 25, 90, 0.65), inset 0 2px 8px rgba(255,255,255,0.28), inset 0 -14px 30px rgba(5, 18, 70, 0.45)',
         }}
       >
         {/* Glossy bubble highlights */}
@@ -55,7 +55,7 @@ export function AuthShell({ children, wide = false }) {
         <div
           aria-hidden="true"
           className="pointer-events-none absolute -bottom-12 right-4 h-24 w-1/2 rounded-full"
-          style={{ background: 'radial-gradient(ellipse at center, rgba(167,139,250,0.35), rgba(167,139,250,0) 70%)' }}
+          style={{ background: 'radial-gradient(ellipse at center, rgba(96,165,250,0.35), rgba(96,165,250,0) 70%)' }}
         />
         <div className="relative">
         {children}
