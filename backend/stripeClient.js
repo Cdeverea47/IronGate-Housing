@@ -43,4 +43,41 @@ function friendlyStripeError(err) {
   return err;
 }
 
-module.exports = { getStripe, friendlyStripeError };
+// Accounts v2 (/v2/core/...) calls. Stripe recommends v2 for creating connected
+// accounts. Made with plain JSON requests so they don't depend on the installed
+// SDK version having v2 account helpers.
+const V2_VERSION = '2026-09-30.endive';
+
+async function stripeV2(path, body) {
+  getStripe(); // throws the friendly "not configured" error when needed
+  let res;
+  try {
+    res = await fetch(`https://api.stripe.com/v2/${path}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}`,
+        'Stripe-Version': V2_VERSION,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    const err = new Error('Could not reach Stripe right now — please try again in a moment.');
+    err.statusCode = 503;
+    throw err;
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const e = data.error || {};
+    const err = new Error(
+      e.code === 'accounts_v2_access_blocked'
+        ? 'Stripe Connect (Accounts v2) isn\'t enabled on this Stripe account yet. Finish Connect setup in the Stripe Dashboard, then try again.'
+        : `Stripe error: ${e.message || 'request failed'}${e.code ? ` (${e.code})` : ''}`
+    );
+    err.statusCode = res.status === 401 ? 503 : 502;
+    throw err;
+  }
+  return data;
+}
+
+module.exports = { getStripe, friendlyStripeError, stripeV2 };

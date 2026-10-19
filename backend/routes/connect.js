@@ -4,7 +4,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { getStripe, friendlyStripeError } = require('../stripeClient');
+const { getStripe, friendlyStripeError, stripeV2 } = require('../stripeClient');
 const { APP_URL, syncAccountStatus } = require('../lib/connect');
 
 const router = express.Router();
@@ -54,19 +54,20 @@ router.post('/onboard', async (req, res, next) => {
     const stripe = getStripe();
     let accountId = user.stripe_account_id;
     if (!accountId) {
-      const account = await stripe.accounts.create({
-        country: 'US',
-        email: user.email,
-        // Landlord is the merchant of record: they get the full Stripe
-        // Dashboard, pay Stripe's fees, and Stripe handles their losses.
-        controller: {
-          stripe_dashboard: { type: 'full' },
-          fees: { payer: 'account' },
-          losses: { payments: 'stripe' },
+      // Accounts v2. The landlord is the merchant of record: full Stripe
+      // Dashboard, Stripe collects its fees from them and covers their losses.
+      const account = await stripeV2('core/accounts', {
+        contact_email: user.email,
+        display_name: user.name || user.email,
+        dashboard: 'full',
+        identity: { country: 'us' },
+        configuration: {
+          merchant: { capabilities: { card_payments: { requested: true } } },
         },
-        capabilities: {
-          card_payments: { requested: true },
-          transfers: { requested: true },
+        defaults: {
+          currency: 'usd',
+          responsibilities: { fees_collector: 'stripe', losses_collector: 'stripe' },
+          locales: ['en-US'],
         },
         metadata: { irongate_user_id: String(user.id) },
       });
@@ -74,11 +75,16 @@ router.post('/onboard', async (req, res, next) => {
       db.prepare('UPDATE users SET stripe_account_id = ? WHERE id = ?').run(accountId, user.id);
     }
 
-    const link = await stripe.accountLinks.create({
+    const link = await stripeV2('core/account_links', {
       account: accountId,
-      type: 'account_onboarding',
-      refresh_url: `${APP_URL}/profile?connect=refresh`,
-      return_url: `${APP_URL}/profile?connect=return`,
+      use_case: {
+        type: 'account_onboarding',
+        account_onboarding: {
+          configurations: ['merchant'],
+          refresh_url: `${APP_URL}/profile?connect=refresh`,
+          return_url: `${APP_URL}/profile?connect=return`,
+        },
+      },
     });
     res.status(201).json({ url: link.url });
   } catch (err) {
