@@ -34,6 +34,65 @@ function Stat({ label, value, tone = 'text-white', sub }) {
   );
 }
 
+// Ring showing how much of what's owed is paid, still to pay this month, and past due.
+function PaidRing({ paid, left, pastDue }) {
+  const total = paid + left + pastDue;
+  const pct = total > 0 ? Math.round((paid / total) * 100) : 100;
+  const r = 52;
+  const c = 2 * Math.PI * r;
+  const segments = [
+    { value: paid, color: '#6ee7b7' },
+    { value: left, color: '#fde68a' },
+    { value: pastDue, color: '#fda4af' },
+  ];
+  let offset = 0;
+  return (
+    <div className="flex items-center gap-5">
+      <div className="relative h-32 w-32 shrink-0">
+        <svg viewBox="0 0 128 128" className="h-full w-full -rotate-90">
+          <circle cx="64" cy="64" r={r} fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="14" />
+          {total > 0
+            ? segments.map((seg, i) => {
+                const len = (seg.value / total) * c;
+                const el = (
+                  <circle
+                    key={i}
+                    cx="64"
+                    cy="64"
+                    r={r}
+                    fill="none"
+                    stroke={seg.color}
+                    strokeWidth="14"
+                    strokeDasharray={`${len} ${c - len}`}
+                    strokeDashoffset={-offset}
+                  />
+                );
+                offset += len;
+                return len > 0 ? el : null;
+              })
+            : null}
+          {total === 0 ? <circle cx="64" cy="64" r={r} fill="none" stroke="#6ee7b7" strokeWidth="14" /> : null}
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <div className="text-2xl font-semibold text-white tabular-nums">{pct}%</div>
+          <div className="text-[11px] text-white/60 -mt-0.5">paid</div>
+        </div>
+      </div>
+      <ul className="text-xs text-white/80 space-y-1.5">
+        <li className="flex items-center gap-2">
+          <span className="h-2.5 w-2.5 rounded-full" style={{ background: '#6ee7b7' }} /> Paid
+        </li>
+        <li className="flex items-center gap-2">
+          <span className="h-2.5 w-2.5 rounded-full" style={{ background: '#fde68a' }} /> Left to pay
+        </li>
+        <li className="flex items-center gap-2">
+          <span className="h-2.5 w-2.5 rounded-full" style={{ background: '#fda4af' }} /> Past due
+        </li>
+      </ul>
+    </div>
+  );
+}
+
 export default function TenantDashboard() {
   const { user } = useAuth();
   const [data, setData] = useState({ linked: true, leases: [] });
@@ -124,7 +183,9 @@ export default function TenantDashboard() {
                 Pay now
               </Link>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-6">
+            <PaidRing paid={monthPaid} left={monthLeft} pastDue={carryOver} />
+            <div className="grid grid-cols-2 gap-4 flex-1">
               <Stat label="Rent this month" value={money(monthDue)} />
               <Stat label="Paid" value={money(monthPaid)} tone="text-emerald-300" />
               <Stat label="Left to pay" value={money(monthLeft)} tone={monthLeft > 0 ? 'text-amber-200' : 'text-white'} />
@@ -134,6 +195,7 @@ export default function TenantDashboard() {
                 tone={totalDue > 0 ? 'text-rose-200' : 'text-white'}
                 sub={carryOver > 0 ? `includes ${money(carryOver)} past due` : null}
               />
+            </div>
             </div>
             {totalDue > 0 ? (
               <p className="mt-4 text-sm text-white/70">
