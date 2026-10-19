@@ -2,25 +2,30 @@ import React from 'react';
 import { LogoBadge, LogoMark, Wordmark } from './Logo.jsx';
 
 // Shared look for the login / sign-up screens: the app's blue gradient with a
-// field of faint IronGate logos filling the screen and one bold logo above the
+// six big faint IronGate logos scattered around and one bold logo above the
 // form card.
+// Fixed, scattered positions (percent of the screen) so the layout is stable.
+const BIG_LOGOS = [
+  { top: '-6%', left: '-5%', size: 300, rotate: -14, opacity: 0.14 },
+  { top: '8%', left: '72%', size: 220, rotate: 18, opacity: 0.12 },
+  { top: '42%', left: '3%', size: 180, rotate: 9, opacity: 0.12 },
+  { top: '58%', left: '80%', size: 340, rotate: -20, opacity: 0.14 },
+  { top: '80%', left: '28%', size: 240, rotate: 15, opacity: 0.12 },
+  { top: '86%', left: '-4%', size: 200, rotate: -8, opacity: 0.12 },
+];
+
 export function AuthShell({ children, wide = false }) {
   return (
     <div className="relative min-h-screen overflow-hidden bg-brand-gradient-diagonal text-white flex flex-col items-center justify-center px-4 py-10">
-      {/* Tiled background of faint logos (alternating tilt) filling the screen */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 grid text-white"
-        style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gridAutoRows: '110px' }}
-      >
-        {Array.from({ length: 140 }).map((_, i) => (
-          <div key={i} className="flex items-center justify-center">
-            <LogoMark
-              className={`h-12 w-12 opacity-[0.12] ${i % 2 === 0 ? 'rotate-[-12deg]' : 'rotate-[12deg]'}`}
-            />
-          </div>
-        ))}
-      </div>
+      {/* Six big logos scattered around the edges */}
+      {BIG_LOGOS.map((l, i) => (
+        <LogoMark
+          key={i}
+          aria-hidden="true"
+          className="pointer-events-none absolute text-white"
+          style={{ top: l.top, left: l.left, width: l.size, height: l.size, opacity: l.opacity, transform: `rotate(${l.rotate}deg)` }}
+        />
+      ))}
 
       {/* The main logo, centered above the card */}
       <div className="relative z-10 flex flex-col items-center gap-3 mb-8">

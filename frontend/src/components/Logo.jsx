@@ -4,9 +4,9 @@ import React from 'react';
 // Housing" (secure, home-focused). Uses currentColor so it inherits whatever
 // text color the parent sets (the app already renders on a white-on-gradient
 // theme almost everywhere).
-export function LogoMark({ className = 'h-5 w-5' }) {
+export function LogoMark({ className = 'h-5 w-5', style, ...rest }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 24 24" fill="none" className={className} style={style} xmlns="http://www.w3.org/2000/svg" {...rest}>
       <path
         d="M12 2.5L19 5.5V11.5C19 16.2 16 20 12 21.5C8 20 5 16.2 5 11.5V5.5L12 2.5Z"
         stroke="currentColor"
