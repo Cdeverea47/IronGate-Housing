@@ -80,7 +80,6 @@ router.post('/onboard', async (req, res, next) => {
       use_case: {
         type: 'account_onboarding',
         account_onboarding: {
-          configurations: ['merchant'],
           refresh_url: `${APP_URL}/profile?connect=refresh`,
           return_url: `${APP_URL}/profile?connect=return`,
         },

@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
-import { Button, AuthInput, AuthLabel, RoleToggle, ErrorText, PasswordInput } from '../components/UI.jsx';
-import { LogoBadge, Wordmark } from '../components/Logo.jsx';
+import { Button, AuthInput, AuthLabel, ErrorText, PasswordInput } from '../components/UI.jsx';
+import { AuthShell, RoleChooser } from '../components/AuthShell.jsx';
 
 export default function Login() {
   const { login, loading, error, roleChoice, setRoleChoice, twoFactorChallenge, setTwoFactorChallenge, verifyTwoFactor } =
@@ -10,7 +10,9 @@ export default function Login() {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('landlord');
+  const [params] = useSearchParams();
+  const initialRole = ['landlord', 'tenant'].includes(params.get('role')) ? params.get('role') : null;
+  const [role, setRole] = useState(initialRole);
   const [code, setCode] = useState('');
 
   async function handleSubmit(e) {
@@ -34,25 +36,7 @@ export default function Login() {
   useEffect(() => () => setTwoFactorChallenge(null), [setTwoFactorChallenge]);
 
   return (
-    <div className="min-h-screen flex">
-      <div className="hidden lg:flex w-1/2 bg-brand-gradient-diagonal text-white flex-col justify-between p-12">
-        <div className="flex items-center gap-2.5">
-          <LogoBadge size={36} />
-          <span className="text-lg font-semibold tracking-tight">
-            <Wordmark />
-          </span>
-        </div>
-        <div className="max-w-md">
-          <h2 className="text-3xl font-semibold leading-tight">Run your rental portfolio from one place.</h2>
-          <p className="mt-4 text-white/80">
-            Properties, tenants, leases, rent, maintenance, and documents — all tracked in one clean dashboard.
-          </p>
-        </div>
-        <div className="text-sm text-white/60">© {new Date().getFullYear()} IronGate Housing</div>
-      </div>
-
-      <div className="flex-1 flex items-center justify-center bg-slate-50 px-4">
-        <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white shadow-soft p-8">
+    <AuthShell>
           {twoFactorChallenge ? (
             <>
               <h1 className="text-xl font-semibold text-slate-900 mb-1">Verify it's you</h1>
@@ -109,6 +93,8 @@ export default function Login() {
                 Back
               </button>
             </>
+          ) : !role ? (
+            <RoleChooser title="Welcome to IronGate Housing" subtitle="First, tell us who you are." onChoose={setRole} />
           ) : (
             <>
               <h1 className="text-xl font-semibold text-slate-900 mb-1">Welcome back</h1>
@@ -116,10 +102,6 @@ export default function Login() {
                 {role === 'tenant' ? 'Sign in to view your lease and pay rent' : 'Sign in to manage your properties'}
               </p>
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <AuthLabel>I am a…</AuthLabel>
-                  <RoleToggle role={role} onChange={setRole} />
-                </div>
                 <div>
                   <AuthLabel>Email</AuthLabel>
                   <AuthInput type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
@@ -140,14 +122,18 @@ export default function Login() {
               </form>
               <p className="mt-4 text-sm text-slate-500 text-center">
                 No account?{' '}
-                <Link to="/register" className="text-brand-700 font-medium">
+                <Link to={`/register?role=${role}`} className="text-brand-700 font-medium">
                   Create one
                 </Link>
               </p>
+              <p className="mt-2 text-xs text-slate-400 text-center">
+                Signing in as a {role}.{' '}
+                <button type="button" onClick={() => setRole(null)} className="underline hover:text-slate-600">
+                  Change
+                </button>
+              </p>
             </>
           )}
-        </div>
-      </div>
-    </div>
+    </AuthShell>
   );
 }
